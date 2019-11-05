@@ -1,9 +1,9 @@
 {
-  "program": "switch.p4",
+  "program": "secureswitch.p4",
   "language": "p4-14",
   "targets": {
     "multiswitch": {
-	  topo_module: "topo"
+	  "topo_module": "topo"
     }
   }
 }
