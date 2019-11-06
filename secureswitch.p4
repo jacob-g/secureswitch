@@ -46,7 +46,7 @@ struct headers {
 *********************** P A R S E R  ***********************************
 *************************************************************************/
 
-parser MyParser(packet_in packet,
+parser SSParser(packet_in packet,
                 out headers hdr,
                 inout metadata meta,
                 inout standard_metadata_t standard_metadata) {
@@ -63,7 +63,7 @@ parser MyParser(packet_in packet,
 ************   C H E C K S U M    V E R I F I C A T I O N   *************
 *************************************************************************/
 
-control MyVerifyChecksum(inout headers hdr, inout metadata meta) {   
+control DefaultVerifyChecksum(inout headers hdr, inout metadata meta) {   
     apply {  }
 }
 
@@ -72,7 +72,7 @@ control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
 **************  I N G R E S S   P R O C E S S I N G   *******************
 *************************************************************************/
 
-control MyIngress(inout headers hdr,
+control SSIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
     action drop() {
@@ -110,7 +110,7 @@ control MyIngress(inout headers hdr,
 ****************  E G R E S S   P R O C E S S I N G   *******************
 *************************************************************************/
 
-control MyEgress(inout headers hdr,
+control SSEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
     apply {  }
@@ -120,12 +120,13 @@ control MyEgress(inout headers hdr,
 *************   C H E C K S U M    C O M P U T A T I O N   **************
 *************************************************************************/
 
-control MyComputeChecksum(inout headers hdr, inout metadata meta) {
+//this originated from the P4 tutorial
+control DefaultComputeChecksum(inout headers hdr, inout metadata meta) {
      apply {
 	update_checksum(
 	    hdr.ipv4.isValid(),
             { hdr.ipv4.version,
-	      hdr.ipv4.ihl,
+			  hdr.ipv4.ihl,
               hdr.ipv4.diffserv,
               hdr.ipv4.totalLen,
               hdr.ipv4.identification,
@@ -145,7 +146,7 @@ control MyComputeChecksum(inout headers hdr, inout metadata meta) {
 ***********************  D E P A R S E R  *******************************
 *************************************************************************/
 
-control MyDeparser(packet_out packet, in headers hdr) {
+control SSDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
 		packet.emit(hdr.ipv4);
@@ -157,10 +158,10 @@ control MyDeparser(packet_out packet, in headers hdr) {
 *************************************************************************/
 
 V1Switch(
-MyParser(),
-MyVerifyChecksum(),
-MyIngress(),
-MyEgress(),
-MyComputeChecksum(),
-MyDeparser()
+SSParser(),
+DefaultVerifyChecksum(),
+SSIngress(),
+SSEgress(),
+DefaultComputeChecksum(),
+SSDeparser()
 ) main;
