@@ -10,17 +10,16 @@ class NetworkSetupTopo(Topo):
 	def __init__(self, *args, **kwargs):
 		Topo.__init__(self, *args, **kwargs)
 		
-		self.p4_network = {}
+		s1 = self.addSwitch("s1", cls = P4Switch)
 		
-		for i in range(0, 2):
-			self.p4_network[self.addSwitch(cls = P4Switch)] = []
+		h1 = self.addHost("h1")
+		h2 = self.addHost("h2")
 		
-		self.internet_switches = []
-		for i in range(0, 5):
-			self.internet_switches.append(self.addSwitch("s%d".format(i)))
+		self.addLink(h1, s1)
+		self.addLink(h2, s1)
 			
 topo = NetworkSetupTopo()
 net = Mininet(topo = topo, host = P4Host, controller = None)
 net.start()
-sleep(5)
+net.pingAll()
 net.stop()
