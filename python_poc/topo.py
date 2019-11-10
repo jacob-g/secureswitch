@@ -10,14 +10,18 @@ s1 = net.addSwitch('s1')
 c0 = net.addController('c0', controller=RemoteController)
 
 h0 = net.addHost('h0')
+h1 = net.addHost('h1')
 #h0.setIP('100.101.102.1', 24)
 
-h1 = net.addHost('h1')
+h2 = net.addHost('h2')
+h3 = net.addHost('h3')
 #h1.setIP('130.101.103.1', 24)
 
 net.addLink(s0, s1)
 net.addLink(h0, s0)
-net.addLink(h1, s1)
+net.addLink(h1, s0)
+net.addLink(h2, s1)
+net.addLink(h3, s1)
 
 net.start()
 CLI(net)
