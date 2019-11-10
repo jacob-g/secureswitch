@@ -12,7 +12,10 @@ from itertools import chain
 
 class SecureSwitchController(app_manager.RyuApp):
 	OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
-	switch_mac = "00:00:00:00:01:01"
+	
+	switch_local_mac = "00:00:00:00:01:01"
+	switch_interchange_mac = "00:00:00:00:01:02"
+	
 	end_nets = {
 		0: ["10.0.0.1", "10.0.0.2"],
 		1: ["10.0.0.3", "10.0.0.4"]
@@ -29,9 +32,11 @@ class SecureSwitchController(app_manager.RyuApp):
 		ofproto = datapath.ofproto
 		parser = datapath.ofproto_parser
 		
+		#find all attached devices to this switch
 		for ip_list in self.end_nets.values():
 			for ip in ip_list:
-				self.send_arp_request(datapath, self.switch_mac, "0.0.0.0", ip)
+				self.send_arp_request(datapath, self.switch_local_mac, "0.0.0.0", ip)
+						
 		
 		#say that for any unmatched packets, send them to the controller
 		self.add_flow_entry(datapath, 0, parser.OFPMatch(), [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)], 0)
@@ -93,13 +98,12 @@ class SecureSwitchController(app_manager.RyuApp):
 			print pkt_arp
 			
 			if pkt_arp.opcode == arp.ARP_REQUEST:
-				if mac_src != self.switch_mac:
-					self.send_arp_response(dp, in_port, self.switch_mac, pkt_arp.dst_ip, eth.src, pkt_arp.src_ip)
+				if mac_src != self.switch_local_mac:
+					self.send_arp_response(dp, in_port, self.switch_local_mac, pkt_arp.dst_ip, eth.src, pkt_arp.src_ip)
 				return
 				
 			elif pkt_arp.opcode == arp.ARP_REPLY: #we received an ARP response, so record the MAC and IP addresses
 				self.device_macs[pkt_arp.src_ip] = pkt_arp.src_mac
-				print self.device_macs
 				return
 		
 		elif eth.ethertype == ether_types.ETH_TYPE_IP:
@@ -115,11 +119,9 @@ class SecureSwitchController(app_manager.RyuApp):
 			ip_dst = pkt_ip.dst
 			ip_src = pkt_ip.src
 			
-			if self.endnet_of(ip_dst) == self.endnet_of(ip_src):
-				print "Devices on same end network", ip_src, ip_dst
-				
-				#TODO: just forward the packet and add a flow saying not to send these to the controller anymore
-				
+			if self.same_endnet(pkt_ip):
+				#if the two devices are on the same network, just forward the packet normally
+								
 				data = None
 				if msg.buffer_id == ofproto.OFP_NO_BUFFER:
 					data = msg.data
@@ -137,13 +139,29 @@ class SecureSwitchController(app_manager.RyuApp):
 				
 				dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
 				
+				#TODO: add a flow
+				
 			else:
-				print("Devices on different end networks")
-				#TODO: encrypt or decrypt the packet
+				if self.is_incoming(mac_dst, pkt_ip):
+					print "Inbound packet"
+					return
+				elif self.is_outgoing(mac_dst, pkt_ip):
+					print "Outbound packet"
+					return
+				
 			
 			#if we received a packet that isn't either to a service or from a service, defensively drop it
 		#if we received a packet of unknown protocol, defensively drop it
 		return
+				
+	def same_endnet(self, pkt_ip):
+		return self.endnet_of(pkt_ip.src) == self.endnet_of(pkt_ip.dst)
+		
+	def decrypt_ip_pkt(self, data):
+		return
+		
+	def encrypt_ip_pkt(self, data):
+		return data
 		
 	def endnet_of(self, ip):
 		for net_id, ips in self.end_nets.items():
@@ -151,6 +169,12 @@ class SecureSwitchController(app_manager.RyuApp):
 				return net_id
 		
 		raise KeyError(ip)
+		
+	def is_incoming(self, eth_dst, pkt_ip):
+		return eth_dst == self.switch_interchange_mac
+	
+	def is_outgoing(self, eth_dst, pkt_ip):
+		return eth_dst == self.switch_local_mac
 
 	@set_ev_cls(ofp_event.EventOFPFlowRemoved, MAIN_DISPATCHER)
 	def flow_removed_handler(self, ev):
