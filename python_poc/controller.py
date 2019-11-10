@@ -17,8 +17,8 @@ class SecureSwitchController(app_manager.RyuApp):
 	switch_interchange_mac = "00:00:00:00:01:02"
 	
 	end_nets = {
-		0: ["10.0.0.1", "10.0.0.2"],
-		1: ["10.0.0.3", "10.0.0.4"]
+		0: ["100.0.0.1", "100.0.0.2"],
+		1: ["100.1.0.1", "100.1.0.2"]
 	}
 	device_macs = {}
 	device_ports = {}
@@ -90,8 +90,6 @@ class SecureSwitchController(app_manager.RyuApp):
 		mac_src = eth.src
 										
 		in_port = msg.match['in_port']
-		
-		self.device_ports[mac_src] = in_port
 				
 		if eth.ethertype == ether_types.ETH_TYPE_ARP:
 			pkt_arp = pkt.get_protocol(arp.arp)
@@ -104,6 +102,7 @@ class SecureSwitchController(app_manager.RyuApp):
 				
 			elif pkt_arp.opcode == arp.ARP_REPLY: #we received an ARP response, so record the MAC and IP addresses
 				self.device_macs[pkt_arp.src_ip] = pkt_arp.src_mac
+				self.device_ports[pkt_arp.src_mac] = in_port
 				return
 		
 		elif eth.ethertype == ether_types.ETH_TYPE_IP:
@@ -142,47 +141,42 @@ class SecureSwitchController(app_manager.RyuApp):
 				#TODO: add a flow
 				
 			else:
-				if self.is_incoming(mac_dst, pkt_ip):
-					print "Inbound packet"
-					
-					print self.device_macs
-										
-					final_mac = self.device_macs[ip_dst]
-					
-					actions = [
-						parser.OFPActionSetField(eth_dst=final_mac),
-						parser.OFPActionOutput(ofproto.OFPP_FLOOD) #TODO: use the specific port
-					]
-					
-					data = None
-					if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-						data = msg.data
-					
-					dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
-					
-					return
-				elif self.is_outgoing(mac_dst, pkt_ip):
-					print "Outbound packet"
-					
-					#TODO: encrypt before sending
-					
-					actions = [
-						parser.OFPActionSetField(eth_dst=self.switch_interchange_mac),
-						parser.OFPActionOutput(ofproto.OFPP_FLOOD)
-					]
-					
-					data = None
-					if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-						data = msg.data
-					
-					dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
-					
-					return
+				if self.in_endnet(pkt_ip):
+					#handle packets that were sent through SecureSwitch
+					if self.is_incoming(mac_dst, pkt_ip):															
+						final_mac = self.device_macs[ip_dst]
+						
+						actions = [
+							parser.OFPActionSetField(eth_dst=final_mac),
+							parser.OFPActionOutput(self.device_ports[final_mac])
+						]
+						
+						data = None
+						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+							data = msg.data
+						
+						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
+						
+						return
+					elif self.is_outgoing(mac_dst, pkt_ip):										
+						actions = [
+							parser.OFPActionSetField(eth_dst=self.switch_interchange_mac),
+							parser.OFPActionOutput(ofproto.OFPP_FLOOD)
+						]
+						
+						data = None
+						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+							data = msg.data
+						
+						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
+						
+						return
 				
-			
-			#if we received a packet that isn't either to a service or from a service, defensively drop it
 		#if we received a packet of unknown protocol, defensively drop it
 		return
+		
+	def in_endnet(self, pkt_ip):
+		return self.endnet_of(pkt_ip.src) != -1
 				
 	def same_endnet(self, pkt_ip):
 		return self.endnet_of(pkt_ip.src) == self.endnet_of(pkt_ip.dst)
@@ -198,7 +192,7 @@ class SecureSwitchController(app_manager.RyuApp):
 			if ip in ips:
 				return net_id
 		
-		raise KeyError(ip)
+		raise -1
 		
 	def is_incoming(self, eth_dst, pkt_ip):
 		return eth_dst == self.switch_interchange_mac
