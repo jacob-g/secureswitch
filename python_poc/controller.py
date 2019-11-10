@@ -144,9 +144,39 @@ class SecureSwitchController(app_manager.RyuApp):
 			else:
 				if self.is_incoming(mac_dst, pkt_ip):
 					print "Inbound packet"
+					
+					print self.device_macs
+										
+					final_mac = self.device_macs[ip_dst]
+					
+					actions = [
+						parser.OFPActionSetField(eth_dst=final_mac),
+						parser.OFPActionOutput(ofproto.OFPP_FLOOD) #TODO: use the specific port
+					]
+					
+					data = None
+					if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+						data = msg.data
+					
+					dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
+					
 					return
 				elif self.is_outgoing(mac_dst, pkt_ip):
 					print "Outbound packet"
+					
+					#TODO: encrypt before sending
+					
+					actions = [
+						parser.OFPActionSetField(eth_dst=self.switch_interchange_mac),
+						parser.OFPActionOutput(ofproto.OFPP_FLOOD)
+					]
+					
+					data = None
+					if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+						data = msg.data
+					
+					dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
+					
 					return
 				
 			
