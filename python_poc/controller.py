@@ -155,7 +155,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
 							data = msg.data
 						
-						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
+						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=self.unwrapped_decrypted_ip_pkt(data)))
 						
 						return
 					elif self.is_outgoing(mac_dst, pkt_ip):										
@@ -168,7 +168,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
 							data = msg.data
 						
-						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
+						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=self.wrapped_encrypted_ip_pkt(ip_dst, data)))
 						
 						return
 				
@@ -181,10 +181,30 @@ class SecureSwitchController(app_manager.RyuApp):
 	def same_endnet(self, pkt_ip):
 		return self.endnet_of(pkt_ip.src) == self.endnet_of(pkt_ip.dst)
 		
-	def decrypt_ip_pkt(self, data):
-		return
+	def wrapped_encrypted_ip_pkt(self, dst_ip, data):
+		pkt_eth = ethernet.ethernet(dst=self.switch_interchange_mac,
+									src=self.switch_local_mac,
+									ethertype=ether.ETH_TYPE_IP)
+									
+		pkt_ip = ipv4.ipv4(src='0.0.0.0', dst=dst_ip)
 		
-	def encrypt_ip_pkt(self, data):
+		wrapped_pkt = packet.Packet(data=self.encrypt(data))
+		wrapped_pkt.add_protocol(pkt_eth)
+		wrapped_pkt.add_protocol(pkt_ip)
+		
+		return wrapped_pkt
+		
+	def unwrapped_decrypted_ip_pkt(self, data):
+		pkt = packet.Packet(data)
+		
+		#TODO: decrypt the packet
+		
+		return data
+		
+	def decrypt(self, data):
+		return data
+		
+	def encrypt(self, data):
 		return data
 		
 	def endnet_of(self, ip):
