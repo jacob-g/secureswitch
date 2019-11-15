@@ -26,12 +26,8 @@ class PacketPayload {
 		
 		static byte* payloadFrom(const struct iphdr* ip_packet, const unsigned long int hlen, const unsigned long int plen) {
 			byte* payload = new byte[plen];
-			byte* cursor = ((byte*)ip_packet + hlen);
 			
-			for (unsigned long int offset = 0; offset < plen; offset++) {
-				payload[offset] = *cursor;
-				cursor++;
-			}
+			memcpy(payload, (byte*)ip_packet + hlen, plen);
 			
 			return payload;
 		}
@@ -45,10 +41,32 @@ class PacketPayload {
 		}
 		
 		bool send(int sock) {
-			char* buffer = NULL;
+			byte* buffer = new byte[65536];
 			struct iphdr ip_packet;
-			unsigned long int length;
-			return send(sock, buffer, header_length + payload_length, 0) > 0;
+			
+			ip_packet.ihl = 5;
+			ip_packet.version = 4;
+			ip_packet.tos = 0;
+			ip_packet.id = htons(rand());
+			ip_packet.tot_len = ip_packet.ihl + payload_length;
+			ip_packet.frag_off = 0;
+			ip_packet.ttl = 255;
+			ip_packet.protocol = IPPROTO_IP;
+			ip_packet.check = 0;
+			ip_packet.saddr = dest;
+			ip_packet.daddr = dest;
+			
+			
+			//TODO: calculate IP checksum
+			//ip_packet.check = csum((unsigned short *) &ip_packet, ip_packet->tot_len);
+			
+			memcpy(buffer, &ip_packet, rowsToBytes(ip_packet.ihl));
+			memcpy(buffer + rowsToBytes(ip_packet.ihl), payload, payload_length);
+			
+			bool success = ::send(sock, buffer, header_length + payload_length, 0) > 0;
+			delete[] buffer;
+			
+			return success;
 		}
 		
 	private:
