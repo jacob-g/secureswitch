@@ -1,25 +1,26 @@
 from mininet.net import Mininet
-from mininet.topo import Topo
-from mininet.log import setLogLevel, info
-from mininet.cli import CLI
 from mininet.node import RemoteController
-from p4_mininet import P4Switch, P4Host
-from time import sleep
+from mininet.cli import CLI
 
-class NetworkSetupTopo(Topo):
-	def __init__(self, *args, **kwargs):
-		Topo.__init__(self, *args, **kwargs)
-		
-		s1 = self.addSwitch("s1", cls = P4Switch)
-		
-		h1 = self.addHost("h1")
-		h2 = self.addHost("h2")
-		
-		self.addLink(h1, s1)
-		self.addLink(h2, s1)
-			
-topo = NetworkSetupTopo()
-net = Mininet(topo = topo, host = P4Host, controller = None)
+net = Mininet()
+
+s0 = net.addSwitch('s0')
+s1 = net.addSwitch('s1')
+
+c0 = net.addController('c0', controller=RemoteController)
+
+h0 = net.addHost('h0', ip="100.0.0.1")
+h1 = net.addHost('h1', ip="100.0.0.2")
+
+h2 = net.addHost('h2', ip="100.1.0.1")
+h3 = net.addHost('h3', ip="100.1.0.2")
+
+net.addLink(s0, s1)
+net.addLink(h0, s0)
+net.addLink(h1, s0)
+net.addLink(h2, s1)
+net.addLink(h3, s1)
+
 net.start()
-net.pingAll()
+CLI(net)
 net.stop()
