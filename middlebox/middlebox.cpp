@@ -37,6 +37,8 @@ class PacketPayload {
 		}
 		
 		PacketPayload encrypt() {
+			//TODO: return another object with all metadata intact but the payload encrypted
+			//byte* payload = new byte[payload_length];
 			return *this;
 		}
 		
