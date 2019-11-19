@@ -19,7 +19,9 @@ unsigned int rowsToBytes(unsigned int rows) {
 }
 
 typedef unsigned long int ipv4_addr;
-typedef unsigned char byte;
+typedef uint8_t byte;
+typedef uint32_t ipaddr_t;
+typedef int sock_t;
 
 class PacketPayload {
 	public:
@@ -35,7 +37,7 @@ class PacketPayload {
 			return *this;
 		}
 		
-		bool send(int sock) const {
+		bool send(sock_t sock) const {
 			byte* buffer = new byte[65536];
 			
 			const unsigned int header_length = rowsToBytes(header.ihl);
@@ -68,7 +70,7 @@ class PacketPayload {
 			return payload;
 		}
 		
-		static string ipToString(uint32_t ip) {
+		static string ipToString(ipaddr_t ip) {
 			struct in_addr ip_addr;
 			ip_addr.s_addr = ip;
 			
@@ -87,7 +89,7 @@ int main() {
     // Allocate string buffer to hold incoming packet data
     unsigned char *buffer = (unsigned char *)malloc(buffer_length);
     // Open the raw socket
-    int sock = socket (AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
+    sock_t sock = socket (AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
     if(sock == -1)
     {
         //socket creation failed, may be because of non-root privileges
