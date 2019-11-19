@@ -22,7 +22,7 @@ net.addLink(h2, s1)
 net.addLink(h3, s1)
 
 #disable responding to ping packets on h1
-h1.cmd('echo "1" >  /proc/sys/net/ipv4/icmp_echo_ignore_all')
+h0.cmd('echo "1" > /proc/sys/net/ipv4/icmp_echo_ignore_all')
 
 net.start()
 CLI(net)

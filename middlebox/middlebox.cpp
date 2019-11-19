@@ -4,6 +4,7 @@
 #include<netinet/ip.h>
 #include<sys/socket.h>
 #include<arpa/inet.h>
+#include<net/ethernet.h>
 
 const int row_size = 4;
 const unsigned long int buffer_length = 65536;
@@ -90,7 +91,7 @@ int main() {
     // Allocate string buffer to hold incoming packet data
     unsigned char *buffer = (unsigned char *)malloc(buffer_length);
     // Open the raw socket
-    int sock = socket (AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    int sock = socket (AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
     if(sock == -1)
     {
         //socket creation failed, may be because of non-root privileges
@@ -105,8 +106,8 @@ int main() {
         return 1;
       }
 	
-	  if (packet_size >= sizeof(struct iphdr)) {
-		  struct iphdr *ip_packet = (struct iphdr *)buffer;
+	  if (packet_size >= sizeof(struct ethhdr) + sizeof(struct iphdr)) {
+		  struct iphdr *ip_packet = (struct iphdr *)(buffer + sizeof(struct ethhdr));
 	  
 		  if (PacketPayload::canMakePacket(ip_packet, packet_size)) {
 				PacketPayload payload(ip_packet, packet_size);

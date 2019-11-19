@@ -20,6 +20,10 @@ class SecureSwitchController(app_manager.RyuApp):
 		0: ["100.0.0.1", "100.0.0.2"],
 		1: ["100.1.0.1", "100.1.0.2"]
 	}
+	end_net_encryption_devices = {
+		0: "100.0.0.1",
+		1: "100.1.0.1"
+	}
 	device_macs = {}
 	device_ports = {}
 
@@ -28,6 +32,7 @@ class SecureSwitchController(app_manager.RyuApp):
 		
 	@set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
 	def switch_features_handler(self, ev):
+		#FIXME: this fails for the first time this is run
 		datapath = ev.msg.datapath
 		ofproto = datapath.ofproto
 		parser = datapath.ofproto_parser
@@ -36,7 +41,6 @@ class SecureSwitchController(app_manager.RyuApp):
 		for ip_list in self.end_nets.values():
 			for ip in ip_list:
 				self.send_arp_request(datapath, self.switch_local_mac, "0.0.0.0", ip)
-						
 		
 		#say that for any unmatched packets, send them to the controller
 		self.add_flow_entry(datapath, 0, parser.OFPMatch(), [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)], 0)
@@ -126,7 +130,7 @@ class SecureSwitchController(app_manager.RyuApp):
 					data = msg.data
 					
 				final_mac = self.device_macs[ip_dst]
-					
+									
 				actions = [
 					parser.OFPActionSetField(eth_dst=final_mac),
 					parser.OFPActionOutput(self.device_ports[final_mac])
@@ -143,7 +147,8 @@ class SecureSwitchController(app_manager.RyuApp):
 			else:
 				if self.in_endnet(pkt_ip):
 					#handle packets that were sent through SecureSwitch
-					if self.is_incoming(mac_dst, pkt_ip):															
+					if self.is_incoming(mac_dst, pkt_ip):	
+						#the packet is incoming to our network
 						final_mac = self.device_macs[ip_dst]
 						
 						actions = [
@@ -158,10 +163,18 @@ class SecureSwitchController(app_manager.RyuApp):
 						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=self.unwrapped_decrypted_ip_pkt(data)))
 						
 						return
-					elif self.is_outgoing(mac_dst, pkt_ip):										
+					elif self.is_outgoing(mac_dst, pkt_ip):
+						#the packet is outgoing, send it to the encryption device
+						encryptor_ip = self.end_net_encryption_devices[self.endnet_of(pkt_ip.src)]
+						encryptor_mac = self.device_macs[encryptor_ip]
+						
+						print "Encrypting with ", encryptor_ip
+						print "Sending to mac ", encryptor_mac
+						print "Sending to port ", self.device_ports[encryptor_mac]
+						
 						actions = [
-							parser.OFPActionSetField(eth_dst=self.switch_interchange_mac),
-							parser.OFPActionOutput(ofproto.OFPP_FLOOD)
+							parser.OFPActionSetField(eth_dst=encryptor_mac),
+							parser.OFPActionOutput(self.device_ports[encryptor_mac])
 						]
 						
 						data = None
@@ -181,32 +194,6 @@ class SecureSwitchController(app_manager.RyuApp):
 	def same_endnet(self, pkt_ip):
 		return self.endnet_of(pkt_ip.src) == self.endnet_of(pkt_ip.dst)
 		
-	def wrapped_encrypted_ip_pkt(self, dst_ip, data):
-		pkt_eth = ethernet.ethernet(dst=self.switch_interchange_mac,
-									src=self.switch_local_mac,
-									ethertype=ether.ETH_TYPE_IP)
-									
-		pkt_ip = ipv4.ipv4(src='0.0.0.0', dst=dst_ip)
-		
-		wrapped_pkt = packet.Packet(data=self.encrypt(data))
-		wrapped_pkt.add_protocol(pkt_eth)
-		wrapped_pkt.add_protocol(pkt_ip)
-		
-		return wrapped_pkt
-		
-	def unwrapped_decrypted_ip_pkt(self, data):
-		pkt = packet.Packet(data)
-		
-		#TODO: decrypt the packet
-		
-		return data
-		
-	def decrypt(self, data):
-		return data
-		
-	def encrypt(self, data):
-		return data
-		
 	def endnet_of(self, ip):
 		for net_id, ips in self.end_nets.items():
 			if ip in ips:
@@ -222,7 +209,5 @@ class SecureSwitchController(app_manager.RyuApp):
 
 	@set_ev_cls(ofp_event.EventOFPFlowRemoved, MAIN_DISPATCHER)
 	def flow_removed_handler(self, ev):
-		# handle FlowRemoved event	
 		return
-		# WRITE YOUR CODE HERE
 		
