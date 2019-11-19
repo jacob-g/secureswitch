@@ -14,27 +14,53 @@ using namespace std;
 const int row_size = 4;
 const unsigned long int buffer_length = 65536;
 
-unsigned int rowsToBytes(unsigned int rows) {
+inline unsigned int rowsToBytes(unsigned int rows) {
 	return rows * row_size;
 }
 
-typedef unsigned long int ipv4_addr;
 typedef uint8_t byte;
 typedef uint32_t ipaddr_t;
 typedef int sock_t;
 
 class PacketPayload {
 	public:
-		PacketPayload(const struct iphdr* ip_packet, const unsigned long int length) : header(*ip_packet), payload_length(length - rowsToBytes(header.ihl)), payload(payloadFrom(ip_packet, rowsToBytes(header.ihl), payload_length)) {
+		PacketPayload(const struct iphdr* ip_packet, const uint16_t length) : 
+			header(*ip_packet), 
+			payload_length(length - rowsToBytes(header.ihl)), 
+			payload(payloadFrom(ip_packet, rowsToBytes(header.ihl), payload_length)) {
 		}
 		
 		~PacketPayload() {
 			delete[] payload;
 		}
 		
-		PacketPayload encrypt() {
-			//TODO: return another packet with modified metadata and the original complete payload encrypted
-			return *this;
+		PacketPayload encrypt() const {
+			struct iphdr new_header;
+			new_header.ihl = 5; //TODO: abstract this out
+			new_header.tot_len = rowsToBytes(new_header.ihl) + rowsToBytes(header.ihl) + payload_length;
+			new_header.id = rand();
+			new_header.frag_off = rand();
+			new_header.ttl = 255;
+			new_header.protocol = IPPROTO_IP;
+			new_header.saddr = rand();
+			new_header.daddr = header.daddr;
+			
+			byte* buffer = new byte[65536];
+			memcpy(buffer, &new_header, rowsToBytes(new_header.ihl));
+			memcpy(buffer + rowsToBytes(new_header.ihl), &header, rowsToBytes(header.ihl));
+			memcpy(buffer + rowsToBytes(header.ihl) + rowsToBytes(new_header.ihl), payload, payload_length);
+			
+			return PacketPayload((struct iphdr*)buffer, new_header.tot_len);
+		}
+		
+		PacketPayload decrypt() const {
+			struct iphdr old_header = *((struct iphdr *) payload);
+			byte* buffer = new byte[65536];
+			
+			memcpy(buffer, &old_header, rowsToBytes(old_header.ihl));
+			memcpy(buffer + rowsToBytes(old_header.ihl), payload + rowsToBytes(old_header.ihl), old_header.tot_len - rowsToBytes(old_header.ihl));
+			
+			return PacketPayload((struct iphdr*)buffer, old_header.tot_len);
 		}
 		
 		bool send(sock_t sock) const {
@@ -70,7 +96,7 @@ class PacketPayload {
 			return payload;
 		}
 		
-		static string ipToString(ipaddr_t ip) {
+		static inline string ipToString(ipaddr_t ip) {
 			struct in_addr ip_addr;
 			ip_addr.s_addr = ip;
 			
@@ -96,7 +122,7 @@ int main() {
         perror("Failed to create socket");
         exit(1);
     }
-    while(true) {
+    while (true) {
 		// recvfrom is used to read data from a socket
 		packet_size = recvfrom(sock , buffer , buffer_length , 0 , NULL, NULL);
 		if (packet_size == -1) {
@@ -109,7 +135,7 @@ int main() {
 	  
 			PacketPayload payload(ip_packet, ntohs(ip_packet->tot_len));
 			
-			cout << "Packet in: " << (string)payload << endl;
+			cout << "Packet in: " << (string)(payload.encrypt()) << (string)(payload.encrypt().decrypt()) << endl;
 		}
     }
 	
