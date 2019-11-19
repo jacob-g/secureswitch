@@ -8,6 +8,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <exception>
 
 using namespace std;
 
@@ -21,6 +22,9 @@ inline unsigned int rowsToBytes(unsigned int rows) {
 typedef uint8_t byte;
 typedef uint32_t ipaddr_t;
 typedef int sock_t;
+
+class OversizedPacketException : exception {
+};
 
 class PacketPayload {
 	public:
@@ -45,31 +49,46 @@ class PacketPayload {
 			new_header.saddr = rand();
 			new_header.daddr = header.daddr;
 			
-			byte* buffer = new byte[65536];
-			memcpy(buffer, &new_header, rowsToBytes(new_header.ihl));
-			memcpy(buffer + rowsToBytes(new_header.ihl), &header, rowsToBytes(header.ihl));
-			memcpy(buffer + rowsToBytes(header.ihl) + rowsToBytes(new_header.ihl), payload, payload_length);
+			if (rowsToBytes(header.ihl) + rowsToBytes(new_header.ihl) + payload_length > buffer_length) {
+				throw OversizedPacketException();
+			}
+			
+			byte* buffer = new byte[buffer_length];
+			memcpy(buffer, &new_header, rowsToBytes(new_header.ihl)); //copy the new header to the beginning of the packet
+			memcpy(buffer + rowsToBytes(new_header.ihl), &header, rowsToBytes(header.ihl)); //copy the old header after the new header to tunnel it within the packet
+			memcpy(buffer + rowsToBytes(header.ihl) + rowsToBytes(new_header.ihl), payload, payload_length); //copy the payload after the old header
 			
 			return PacketPayload((struct iphdr*)buffer, new_header.tot_len);
 		}
 		
 		PacketPayload decrypt() const {
 			struct iphdr old_header = *((struct iphdr *) payload);
-			byte* buffer = new byte[65536];
+			byte* buffer = new byte[buffer_length];
 			
-			memcpy(buffer, &old_header, rowsToBytes(old_header.ihl));
-			memcpy(buffer + rowsToBytes(old_header.ihl), payload + rowsToBytes(old_header.ihl), old_header.tot_len - rowsToBytes(old_header.ihl));
+			memcpy(buffer, &old_header, rowsToBytes(old_header.ihl)); //get the old header from the first bytes of the payload (which tunnelled the old packet)
+			
+			if (old_header.tot_len > buffer_length) {
+				throw OversizedPacketException();
+			}
+			
+			memcpy(buffer + rowsToBytes(old_header.ihl), payload + rowsToBytes(old_header.ihl), old_header.tot_len - rowsToBytes(old_header.ihl)); //copy the old payload to the new payload (the old payload pointer offset by the length of the old header)
 			
 			return PacketPayload((struct iphdr*)buffer, old_header.tot_len);
 		}
 		
 		bool send(sock_t sock) const {
-			byte* buffer = new byte[65536];
+			throw OversizedPacketException();
+			
+			byte* buffer = new byte[buffer_length];
+			
+			struct ethhdr link_header;
+			//TODO: construct an ethernet header
 			
 			const unsigned int header_length = rowsToBytes(header.ihl);
 			
-			memcpy(buffer, &header, header_length);
-			memcpy(buffer + header_length, payload, payload_length);
+			memcpy(buffer, &link_header, sizeof(link_header)); //put the link header onto the packet
+			memcpy(buffer + sizeof(link_header), &header, header_length); //put the IP header onto the packet after the link header
+			memcpy(buffer + sizeof(link_header) + header_length, payload, payload_length); //put the payload onto the packet after the IP header
 			
 			bool success = ::send(sock, buffer, header_length + payload_length, 0) > 0;
 			delete[] buffer;
