@@ -15,6 +15,7 @@ class SecureSwitchController(app_manager.RyuApp):
 	
 	switch_local_mac = "00:00:00:00:01:01"
 	switch_interchange_mac = "00:00:00:00:01:02"
+	switch_encrypted_mac = "00:00:00:00:01:03"
 	
 	end_nets = {
 		0: ["100.0.0.1", "100.0.0.2"],
@@ -164,26 +165,34 @@ class SecureSwitchController(app_manager.RyuApp):
 						
 						return
 					elif self.is_outgoing(mac_dst, pkt_ip):
-						#the packet is outgoing, send it to the encryption device
-						encryptor_ip = self.end_net_encryption_devices[self.endnet_of(pkt_ip.src)]
-						encryptor_mac = self.device_macs[encryptor_ip]
-						
-						print "Encrypting with ", encryptor_ip
-						print "Sending to mac ", encryptor_mac
-						print "Sending to port ", self.device_ports[encryptor_mac]
-						
-						actions = [
-							parser.OFPActionSetField(eth_dst=encryptor_mac),
-							parser.OFPActionOutput(self.device_ports[encryptor_mac])
-						]
-						
-						data = None
-						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-							data = msg.data
-						
-						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
-						
-						return
+						if self.endnet_of(pkt_ip.src) == -1:
+							#TODO: detect IP packets sent from the encryptor
+							print "Received encrypted packet pretending to be from ", pkt_ip.src, " actually to ", pkt_ip.dst
+							return
+						elif mac_dst == self.switch_local_mac:
+							#the packet is outgoing, send it to the encryption device
+							encryptor_ip = self.end_net_encryption_devices[self.endnet_of(pkt_ip.src)]
+							encryptor_mac = self.device_macs[encryptor_ip]
+							
+							print "Encrypting with ", encryptor_ip
+							print "Sending to mac ", encryptor_mac
+							print "Sending to port ", self.device_ports[encryptor_mac]
+							
+							actions = [
+								parser.OFPActionSetField(eth_dst=encryptor_mac),
+								parser.OFPActionOutput(self.device_ports[encryptor_mac])
+							]
+							
+							data = None
+							if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+								data = msg.data
+							
+							dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
+							
+							return
+						else:
+							#defensively drop any outbound packets not sent to a correct MAC address
+							return
 				
 		#if we received a packet of unknown protocol, defensively drop it
 		return

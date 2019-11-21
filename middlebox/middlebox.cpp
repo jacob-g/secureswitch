@@ -1,10 +1,11 @@
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
-#include<netinet/ip.h>
-#include<sys/socket.h>
-#include<arpa/inet.h>
-#include<net/ethernet.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <netinet/ip.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <net/ethernet.h>
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -76,21 +77,20 @@ class PacketPayload {
 			return PacketPayload((struct iphdr*)buffer, old_header.tot_len);
 		}
 		
-		bool send(sock_t sock) const {
-			throw OversizedPacketException();
-			
+		bool send(sock_t sock) const {			
 			byte* buffer = new byte[buffer_length];
-			
-			struct ethhdr link_header;
-			//TODO: construct an ethernet header
 			
 			const unsigned int header_length = rowsToBytes(header.ihl);
 			
-			memcpy(buffer, &link_header, sizeof(link_header)); //put the link header onto the packet
-			memcpy(buffer + sizeof(link_header), &header, header_length); //put the IP header onto the packet after the link header
-			memcpy(buffer + sizeof(link_header) + header_length, payload, payload_length); //put the payload onto the packet after the IP header
+			memcpy(buffer, &header, header_length); //put the IP header onto the packet after the link header
+			memcpy(buffer + header_length, payload, payload_length); //put the payload onto the packet after the IP header
 			
-			bool success = ::send(sock, buffer, header_length + payload_length, 0) > 0;
+			struct sockaddr addr  = {0};
+			
+			bool success = ::sendto(sock, buffer, header_length + payload_length, 0, &addr, sizeof(addr)) >= 0;
+			if (!success) {
+				cout << "Error: " << errno << ": " << strerror(errno) << endl;
+			}
 			delete[] buffer;
 			
 			return success;
@@ -126,9 +126,6 @@ class PacketPayload {
 int main() {
 	printf("Starting...\n");
 	
-    // Structs that contain source IP addresses
-    struct sockaddr_in source_socket_address, dest_socket_address;
-
     int packet_size;
 
     // Allocate string buffer to hold incoming packet data
@@ -138,9 +135,16 @@ int main() {
     if(sock == -1)
     {
         //socket creation failed, may be because of non-root privileges
-        perror("Failed to create socket");
+        perror("Failed to create listening socket");
         exit(1);
     }
+	
+	sock_t send_sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+	if (send_sock < 0) {
+		cerr << "Failed to create sending socket" << endl;
+		exit(1);
+	}
+	
     while (true) {
 		// recvfrom is used to read data from a socket
 		packet_size = recvfrom(sock , buffer , buffer_length , 0 , NULL, NULL);
@@ -154,7 +158,15 @@ int main() {
 	  
 			PacketPayload payload(ip_packet, ntohs(ip_packet->tot_len));
 			
-			cout << "Packet in: " << (string)(payload.encrypt()) << (string)(payload.encrypt().decrypt()) << endl;
+			try {
+				cout << "Received packet! " << (string)payload << endl;
+				PacketPayload encrypted_packet = payload.encrypt();
+				cout << "Encrypted: " << (string)encrypted_packet << endl;
+				cout << "Sent: " << encrypted_packet.send(send_sock) << endl;
+			} catch (OversizedPacketException) {
+				//drop the packet
+				cerr << "Packet dropped due to being too large" << endl;
+			}
 		}
     }
 	
