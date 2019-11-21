@@ -175,7 +175,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						
 						return
 					elif self.is_outgoing(mac_dst, pkt_ip):
-						print "Outbound packet on port ", in_port
+						print "Outbound packet on port", in_port
 						if mac_src == self.device_macs[self.end_net_encryption_devices[0]]:
 							#TODO: better detect IP packets sent from the encryptor
 							print "Received encrypted packet pretending to be from ", pkt_ip.src, " actually to ", pkt_ip.dst

@@ -16,6 +16,32 @@ using namespace std;
 const int row_size = 4;
 const unsigned long int buffer_length = 65536;
 
+//checksum from https://www.binarytides.com/raw-sockets-c-code-linux/
+unsigned short csum(unsigned short *ptr,int nbytes) 
+{
+	register long sum;
+	unsigned short oddbyte;
+	register short answer;
+
+	sum=0;
+	while(nbytes>1) {
+		sum+=*ptr++;
+		nbytes-=2;
+	}
+	if(nbytes==1) {
+		oddbyte=0;
+		*((u_char*)&oddbyte)=*(u_char*)ptr;
+		sum+=oddbyte;
+	}
+
+	sum = (sum >> 16)+(sum & 0xffff);
+	sum = sum + (sum >> 16);
+	answer=(short)~sum;
+	
+	return(answer);
+}
+
+
 inline unsigned int rowsToBytes(unsigned int rows) {
 	return rows * row_size;
 }
@@ -59,6 +85,9 @@ class PacketPayload {
 			memcpy(buffer + rowsToBytes(new_header.ihl), &header, rowsToBytes(header.ihl)); //copy the old header after the new header to tunnel it within the packet
 			memcpy(buffer + rowsToBytes(header.ihl) + rowsToBytes(new_header.ihl), payload, payload_length); //copy the payload after the old header
 			
+			struct iphdr* in_situ_header = (struct iphdr*)buffer;
+			in_situ_header->check = csum((unsigned short *)buffer, new_header.tot_len);
+			
 			return PacketPayload((struct iphdr*)buffer, new_header.tot_len);
 		}
 		
@@ -77,7 +106,7 @@ class PacketPayload {
 			return PacketPayload((struct iphdr*)buffer, old_header.tot_len);
 		}
 		
-		bool send(sock_t sock) const {			
+		bool send(sock_t sock) const {
 			byte* buffer = new byte[buffer_length];
 			
 			const unsigned int header_length = rowsToBytes(header.ihl);
@@ -85,11 +114,16 @@ class PacketPayload {
 			memcpy(buffer, &header, header_length); //put the IP header onto the packet after the link header
 			memcpy(buffer + header_length, payload, payload_length); //put the payload onto the packet after the IP header
 			
-			struct sockaddr addr = {0};
+						
+			struct sockaddr_in sin;
+			sin.sin_family = AF_INET;
+			sin.sin_port = htons(0);
+			sin.sin_addr.s_addr = header.daddr;
 			
-			bool success = ::sendto(sock, buffer, header_length + payload_length, 0, &addr, sizeof(addr)) > 0;
+			//TODO: figure out why this isn't even sending ARP requests
+			bool success = ::sendto(sock, buffer, header_length + payload_length, 0, (struct sockaddr *)&sin, sizeof(sin)) > 0;
 			if (!success) {
-				cout << "Error: " << errno << ": " << strerror(errno) << endl;
+				cout << "Error " << errno << ": " << strerror(errno) << endl;
 			}
 			delete[] buffer;
 			
@@ -162,7 +196,7 @@ int main() {
 			
 			try {
 				cout << "Received packet: " << (string)payload << endl;
-				payload.send(send_sock);
+				payload.encrypt().send(send_sock);
 			} catch (OversizedPacketException) {
 				//drop the packet
 				cerr << "Packet dropped due to being too large" << endl;
