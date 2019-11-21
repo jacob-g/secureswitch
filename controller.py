@@ -29,6 +29,7 @@ class SecureSwitchController(app_manager.RyuApp):
 	device_ports = {}
 
 	def __init__(self, *args, **kwargs):
+	
 		super(SecureSwitchController, self).__init__(*args, **kwargs)
 		
 	@set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -98,14 +99,18 @@ class SecureSwitchController(app_manager.RyuApp):
 				
 		if eth.ethertype == ether_types.ETH_TYPE_ARP:
 			pkt_arp = pkt.get_protocol(arp.arp)
-			print pkt_arp
 			
 			if pkt_arp.opcode == arp.ARP_REQUEST:
-				if mac_src != self.switch_local_mac:
+				if pkt_arp.src_ip in self.end_net_encryption_devices.values():
+					print "Received ARP request for encryptor:", pkt_arp
+					self.send_arp_response(dp, in_port, self.switch_encrypted_mac, pkt_arp.dst_ip, eth.src, pkt_arp.src_ip)
+				elif mac_src != self.switch_local_mac:
+					print "Received ARP request from local device:", pkt_arp
 					self.send_arp_response(dp, in_port, self.switch_local_mac, pkt_arp.dst_ip, eth.src, pkt_arp.src_ip)
 				return
 				
 			elif pkt_arp.opcode == arp.ARP_REPLY: #we received an ARP response, so record the MAC and IP addresses
+				print "Received ARP response:", pkt_arp
 				self.device_macs[pkt_arp.src_ip] = pkt_arp.src_mac
 				self.device_ports[pkt_arp.src_mac] = in_port
 				return
@@ -116,7 +121,6 @@ class SecureSwitchController(app_manager.RyuApp):
 		
 			# handle IP packets
 			pkt_ip = pkt.get_protocol(ipv4.ipv4)
-			print pkt_ip
 			
 			#get the IP packet data
 			pkt_ip = pkt.get_protocol(ipv4.ipv4)
@@ -125,7 +129,9 @@ class SecureSwitchController(app_manager.RyuApp):
 			
 			if self.same_endnet(pkt_ip):
 				#if the two devices are on the same network, just forward the packet normally
-								
+				
+				print "Received local packet", pkt_ip
+				
 				data = None
 				if msg.buffer_id == ofproto.OFP_NO_BUFFER:
 					data = msg.data
@@ -133,6 +139,7 @@ class SecureSwitchController(app_manager.RyuApp):
 				final_mac = self.device_macs[ip_dst]
 									
 				actions = [
+					parser.OFPActionSetField(eth_src=self.switch_local_mac),
 					parser.OFPActionSetField(eth_dst=final_mac),
 					parser.OFPActionOutput(self.device_ports[final_mac])
 				]
@@ -147,9 +154,12 @@ class SecureSwitchController(app_manager.RyuApp):
 				
 			else:
 				if self.in_endnet(pkt_ip):
+					print "Originates in endnet"
 					#handle packets that were sent through SecureSwitch
 					if self.is_incoming(mac_dst, pkt_ip):	
 						#the packet is incoming to our network
+						print "Local packet", pkt_ip
+						
 						final_mac = self.device_macs[ip_dst]
 						
 						actions = [
@@ -165,32 +175,35 @@ class SecureSwitchController(app_manager.RyuApp):
 						
 						return
 					elif self.is_outgoing(mac_dst, pkt_ip):
-						if self.endnet_of(pkt_ip.src) == -1:
-							#TODO: detect IP packets sent from the encryptor
+						print "Outbound packet on port ", in_port
+						if mac_src == self.device_macs[self.end_net_encryption_devices[0]]:
+							#TODO: better detect IP packets sent from the encryptor
 							print "Received encrypted packet pretending to be from ", pkt_ip.src, " actually to ", pkt_ip.dst
 							return
 						elif mac_dst == self.switch_local_mac:
 							#the packet is outgoing, send it to the encryption device
 							encryptor_ip = self.end_net_encryption_devices[self.endnet_of(pkt_ip.src)]
 							encryptor_mac = self.device_macs[encryptor_ip]
+							encryptor_port = self.device_ports[encryptor_mac]
 							
-							print "Encrypting with ", encryptor_ip
-							print "Sending to mac ", encryptor_mac
-							print "Sending to port ", self.device_ports[encryptor_mac]
+							print "Encrypting with", encryptor_ip, "on port", encryptor_port
 							
 							actions = [
+								parser.OFPActionSetField(eth_src=self.switch_encrypted_mac),
 								parser.OFPActionSetField(eth_dst=encryptor_mac),
-								parser.OFPActionOutput(self.device_ports[encryptor_mac])
+								parser.OFPActionOutput(encryptor_port)
 							]
 							
 							data = None
 							if msg.buffer_id == ofproto.OFP_NO_BUFFER:
 								data = msg.data
 							
+							#TODO: figure out why h1 knows anything!
 							dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
 							
 							return
 						else:
+							print "Dropped outbound packet"
 							#defensively drop any outbound packets not sent to a correct MAC address
 							return
 				

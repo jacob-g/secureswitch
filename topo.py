@@ -23,6 +23,7 @@ net.addLink(h3, s1)
 
 #disable responding to ping packets on h1
 h0.cmd('echo "1" > /proc/sys/net/ipv4/icmp_echo_ignore_all')
+h0.cmd('echo 0 | tee /proc/sys/net/ipv4/conf/*/send_redirects') #don't send ICMP redirects
 
 net.start()
 CLI(net)
