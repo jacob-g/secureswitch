@@ -85,9 +85,9 @@ class PacketPayload {
 			memcpy(buffer, &header, header_length); //put the IP header onto the packet after the link header
 			memcpy(buffer + header_length, payload, payload_length); //put the payload onto the packet after the IP header
 			
-			struct sockaddr addr  = {0};
+			struct sockaddr addr = {0};
 			
-			bool success = ::sendto(sock, buffer, header_length + payload_length, 0, &addr, sizeof(addr)) >= 0;
+			bool success = ::sendto(sock, buffer, header_length + payload_length, 0, &addr, sizeof(addr)) > 0;
 			if (!success) {
 				cout << "Error: " << errno << ": " << strerror(errno) << endl;
 			}
@@ -144,6 +144,8 @@ int main() {
 		cerr << "Failed to create sending socket" << endl;
 		exit(1);
 	}
+	const int on = 1;
+	setsockopt (send_sock, IPPROTO_IP, IP_HDRINCL, &on, sizeof (on));
 	
     while (true) {
 		// recvfrom is used to read data from a socket
@@ -159,10 +161,8 @@ int main() {
 			PacketPayload payload(ip_packet, ntohs(ip_packet->tot_len));
 			
 			try {
-				cout << "Received packet! " << (string)payload << endl;
-				PacketPayload encrypted_packet = payload.encrypt();
-				cout << "Encrypted: " << (string)encrypted_packet << endl;
-				cout << "Sent: " << encrypted_packet.send(send_sock) << endl;
+				cout << "Received packet: " << (string)payload << endl;
+				payload.send(send_sock);
 			} catch (OversizedPacketException) {
 				//drop the packet
 				cerr << "Packet dropped due to being too large" << endl;
