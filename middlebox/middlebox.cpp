@@ -114,16 +114,12 @@ class PacketPayload {
 			memcpy(buffer, &header, header_length); //put the IP header onto the packet after the link header
 			memcpy(buffer + header_length, payload, payload_length); //put the payload onto the packet after the IP header
 			
-						
-			struct sockaddr_in sin;
-			sin.sin_family = AF_INET;
-			sin.sin_port = htons(0);
-			sin.sin_addr.s_addr = header.daddr;
+			sockaddr_in sin = {0};
 			
-			//TODO: figure out why this isn't even sending ARP requests
+			//this IS sending out ARP requests and getting replies successfully!
 			bool success = ::sendto(sock, buffer, header_length + payload_length, 0, (struct sockaddr *)&sin, sizeof(sin)) > 0;
 			if (!success) {
-				cout << "Error " << errno << ": " << strerror(errno) << endl;
+				cerr << "Error " << errno << ": " << strerror(errno) << endl;
 			}
 			delete[] buffer;
 			
@@ -196,7 +192,9 @@ int main() {
 			
 			try {
 				cout << "Received packet: " << (string)payload << endl;
-				payload.encrypt().send(send_sock);
+				PacketPayload encrypted = payload.encrypt();
+				cout << " -> Sending: " << (string)encrypted << endl;
+				encrypted.send(send_sock);
 			} catch (OversizedPacketException) {
 				//drop the packet
 				cerr << "Packet dropped due to being too large" << endl;
