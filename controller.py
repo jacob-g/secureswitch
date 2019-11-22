@@ -185,7 +185,8 @@ class SecureSwitchController(app_manager.RyuApp):
 						encryptor_mac = self.device_macs[encryptor_ip]
 						encryptor_port = self.device_ports[encryptor_mac]
 						
-						print "Received packet to be encrypted from", pkt_ip.src, "to", pkt_ip.dst, "encrypting with", encryptor_ip, "on port", encryptor_port
+						print "UNENCRYPTED to:", pkt_ip.src, "to", pkt_ip.dst, "encrypting with", encryptor_ip, "on port", encryptor_port
+						print " -> src:", mac_src, "dst:", mac_dst
 												
 						actions = [
 							parser.OFPActionSetField(eth_src=self.switch_encrypted_mac),
@@ -203,7 +204,8 @@ class SecureSwitchController(app_manager.RyuApp):
 						
 					elif self.is_outgoing_encypted(mac_dst, pkt_ip):
 						#TODO: better detect IP packets sent from the encryptor
-						print "Received encrypted packet pretending to be from", pkt_ip.src, "actually to", pkt_ip.dst
+						print "ENCRYPTED from:", pkt_ip.src, "to:", pkt_ip.dst
+						print " -> src:", mac_src, "dst:", mac_dst
 						return
 						
 					else:
@@ -224,7 +226,7 @@ class SecureSwitchController(app_manager.RyuApp):
 			if ip in ips:
 				return net_id
 		
-		raise -1
+		return -1
 		
 	def is_incoming_encrypted(self, eth_dst, pkt_ip):
 		return eth_dst == self.switch_interchange_mac

@@ -83,7 +83,13 @@ class PacketPayload {
 			byte* buffer = new byte[buffer_length];
 			memcpy(buffer, &new_header, rowsToBytes(new_header.ihl)); //copy the new header to the beginning of the packet
 			memcpy(buffer + rowsToBytes(new_header.ihl), &header, rowsToBytes(header.ihl)); //copy the old header after the new header to tunnel it within the packet
-			memcpy(buffer + rowsToBytes(header.ihl) + rowsToBytes(new_header.ihl), payload, payload_length); //copy the payload after the old header
+			memcpy(buffer + rowsToBytes(new_header.ihl) + rowsToBytes(header.ihl), payload, payload_length); //copy the payload after the old header
+			
+			//TODO: factor encryption logic out into its own function to separate it from tunneling logic
+			for (byte* cursor = buffer + rowsToBytes(new_header.ihl); cursor < buffer + rowsToBytes(new_header.ihl) + new_header.tot_len; cursor++) {
+				*cursor = ~*cursor;
+			}
+			
 			
 			struct iphdr* in_situ_header = (struct iphdr*)buffer;
 			in_situ_header->check = csum((unsigned short *)buffer, new_header.tot_len);
@@ -102,6 +108,10 @@ class PacketPayload {
 			}
 			
 			memcpy(buffer + rowsToBytes(old_header.ihl), payload + rowsToBytes(old_header.ihl), old_header.tot_len - rowsToBytes(old_header.ihl)); //copy the old payload to the new payload (the old payload pointer offset by the length of the old header)
+			
+			for (byte* cursor = buffer; cursor < buffer + old_header.tot_len; cursor++) {
+				*cursor = ~*cursor;
+			}
 			
 			return PacketPayload((struct iphdr*)buffer, old_header.tot_len);
 		}
@@ -194,6 +204,7 @@ int main() {
 				cout << "Received packet: " << (string)payload << endl;
 				PacketPayload encrypted = payload.encrypt();
 				cout << " -> Sending: " << (string)encrypted << endl;
+				cout << " -> Decrypted" << (string)(encrypted.decrypt()) << endl;
 				encrypted.send(send_sock);
 			} catch (OversizedPacketException) {
 				//drop the packet

@@ -21,7 +21,8 @@ net.addLink(h1, s0)
 net.addLink(h2, s1)
 net.addLink(h3, s1)
 
-#disable responding to ping packets on h1
+#disable responding to ping packets on h0
+#TODO: figure out why h0 responds to "misrouted" ip packets
 h0.cmd('echo "1" > /proc/sys/net/ipv4/icmp_echo_ignore_all')
 h0.cmd('echo 0 | tee /proc/sys/net/ipv4/conf/*/send_redirects') #don't send ICMP redirects
 
