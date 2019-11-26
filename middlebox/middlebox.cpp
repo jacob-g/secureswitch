@@ -68,7 +68,7 @@ class PacketPayload {
 		PacketPayload encrypt() const {
 			struct iphdr new_header;
 			new_header.ihl = 5; //TODO: abstract this out
-			new_header.tot_len = rowsToBytes(new_header.ihl) + rowsToBytes(header.ihl) + payload_length;
+			new_header.tot_len = rowsToBytes(new_header.ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier;
 			new_header.id = rand();
 			new_header.frag_off = rand();
 			new_header.ttl = 255;
@@ -76,20 +76,29 @@ class PacketPayload {
 			new_header.saddr = rand();
 			new_header.daddr = header.daddr;
 			
-			if (rowsToBytes(header.ihl) + rowsToBytes(new_header.ihl) + payload_length > buffer_length) {
+			if (header.tot_len > buffer_length) {
 				throw OversizedPacketException();
 			}
 			
 			byte* buffer = new byte[buffer_length];
 			memcpy(buffer, &new_header, rowsToBytes(new_header.ihl)); //copy the new header to the beginning of the packet
-			memcpy(buffer + rowsToBytes(new_header.ihl), &header, rowsToBytes(header.ihl)); //copy the old header after the new header to tunnel it within the packet
-			memcpy(buffer + rowsToBytes(new_header.ihl) + rowsToBytes(header.ihl), payload, payload_length); //copy the payload after the old header
 			
-			//TODO: factor encryption logic out into its own function to separate it from tunneling logic
-			for (byte* cursor = buffer + rowsToBytes(new_header.ihl); cursor < buffer + rowsToBytes(new_header.ihl) + new_header.tot_len; cursor++) {
-				*cursor = ~*cursor;
+			byte* encrypted_header = buffer + rowsToBytes(new_header.ihl);
+			byte* dst_cursor = encrypted_header;
+			
+			for (byte* src = (byte*)&header; src < (byte*)&header + rowsToBytes(header.ihl); src++) {
+				dst_cursor[0] = *src;
+
+				dst_cursor += size_multiplier;
 			}
-			
+						
+			byte* encrypted_payload = dst_cursor;
+			for (byte* src = const_cast<byte*>(payload); src < payload + payload_length; src++) {
+				dst_cursor += size_multiplier;
+				*dst_cursor = *src;
+			}
+						
+			//TODO: factor encryption logic out into its own function to separate it from tunneling logic
 			
 			struct iphdr* in_situ_header = (struct iphdr*)buffer;
 			in_situ_header->check = csum((unsigned short *)buffer, new_header.tot_len);
@@ -98,20 +107,13 @@ class PacketPayload {
 		}
 		
 		PacketPayload decrypt() const {
-			struct iphdr old_header = *((struct iphdr *) payload);
 			byte* buffer = new byte[buffer_length];
 			
-			memcpy(buffer, &old_header, rowsToBytes(old_header.ihl)); //get the old header from the first bytes of the payload (which tunnelled the old packet)
-			
-			if (old_header.tot_len > buffer_length) {
-				throw OversizedPacketException();
+			for (byte* src = const_cast<byte*>(payload), *dst = buffer; src < payload + payload_length; src += size_multiplier, dst++) {
+				dst[0] = *src;
 			}
 			
-			memcpy(buffer + rowsToBytes(old_header.ihl), payload + rowsToBytes(old_header.ihl), old_header.tot_len - rowsToBytes(old_header.ihl)); //copy the old payload to the new payload (the old payload pointer offset by the length of the old header)
-			
-			for (byte* cursor = buffer; cursor < buffer + old_header.tot_len; cursor++) {
-				*cursor = ~*cursor;
-			}
+			struct iphdr old_header = *((struct iphdr *) buffer);
 			
 			return PacketPayload((struct iphdr*)buffer, old_header.tot_len);
 		}
@@ -143,6 +145,7 @@ class PacketPayload {
 		}
 		
 	private:
+		const static unsigned int size_multiplier = 3;
 		const struct iphdr header;
 		const unsigned int payload_length;
 		const byte* payload;
@@ -165,6 +168,21 @@ class PacketPayload {
 
 int main() {
 	printf("Starting...\n");
+	
+	struct iphdr pkt;
+	pkt.saddr = 0x15419;
+	pkt.daddr = 0x14101;
+	pkt.ihl = 5;
+	byte* payload = (byte*)&pkt +  pkt.ihl;
+	*payload = 0;
+	pkt.tot_len = rowsToBytes(10);
+	PacketPayload packet(&pkt, pkt.tot_len);
+	cout << "Packet:" << (string)packet << endl;
+	PacketPayload encrypted = packet.encrypt();
+	cout << "Encrypted: " << (string)encrypted << endl;
+	cout << "Decrypted: " << (string)(encrypted.decrypt()) << endl;
+	
+	exit(0);
 	
     int packet_size;
 
