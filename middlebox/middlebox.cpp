@@ -79,25 +79,44 @@ class OversizedPacketException : exception {
 };
 
 template<typename T>
-class PrivateEncryptionKey {
+T mod_exponent(T num, T exponent, T mod) {
+	T working_power = num;
+	for (T i = 0; i < exponent - 1; i++) {
+		working_power = (working_power * num) % mod;
+	}
+	return working_power;
+}
+
+template<typename T>
+class PublicEncryptionKey {
 	public:
+		const T pub_e, pub_n;
+		
+		PublicEncryptionKey(T in_e, T in_n) :
+			pub_e(in_e),
+			pub_n(in_n) {};
+		
+		T encrypt(byte unencrypted) const {
+			return mod_exponent<T>(unencrypted, pub_e, pub_n);
+		}
+};
+
+template<typename T>
+class PrivateEncryptionKey {
+	public:	
 		PrivateEncryptionKey(T in_p, T in_q) :
 			priv_p(in_p),
 			priv_q(in_q),
-			pub_n(in_p * in_q),
 			totient((priv_p - 1) * (priv_q - 1)),
-			pub_e(smallest_coprime(totient)),
-			priv_d(mod_inverse(pub_e, totient)) {}
-			
-		T encrypt(byte unencrypted) const {
-			return mod_exponent(unencrypted, pub_e, pub_n);
-		}
+			pub_key(PublicEncryptionKey<T>(smallest_coprime(totient), in_p * in_q)),
+			priv_d(mod_inverse(pub_key.pub_e, totient)) {}
 		
 		T decrypt(T encrypted) const {
-			return mod_exponent(encrypted, priv_d, pub_n);
+			return mod_exponent<T>(encrypted, priv_d, pub_key.pub_n);
 		}
+		
 	private:
-		const T priv_p, priv_q, totient, pub_e, pub_n, priv_d;
+		const T priv_p, priv_q, totient;
 		
 		static T smallest_coprime(T num) {
 			T guess = 2;
@@ -107,13 +126,11 @@ class PrivateEncryptionKey {
 			return guess;
 		}
 		
-		static T mod_exponent(T num, T exponent, T mod) {
-			T working_power = num;
-			for (T i = 0; i < exponent - 1; i++) {
-				working_power = (working_power * num) % mod;
-			}
-			return working_power;
-		}
+	public:
+		const PublicEncryptionKey<T> pub_key;
+	
+	private:
+		const T priv_d;
 };
 
 class PacketPayload {
@@ -130,7 +147,7 @@ class PacketPayload {
 		
 		typedef uint32_t encryption_type;
 		
-		PacketPayload encrypt(const PrivateEncryptionKey<encryption_type>& key) const {
+		PacketPayload encrypt(const PublicEncryptionKey<encryption_type>& key) const {
 			struct iphdr new_header;
 			new_header.ihl = 5; //TODO: abstract this out
 			new_header.tot_len = rowsToBytes(new_header.ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier;
@@ -151,19 +168,20 @@ class PacketPayload {
 			byte* encrypted_header = buffer + rowsToBytes(new_header.ihl);
 			encryption_type* dst_cursor = (encryption_type*)encrypted_header;
 			
+			//TODO: join these foreach loops
+			//copy and encrypt the header (the encrypted version may use different unit sizes for each source bytes, but since dst_cursor is of type encryption_type, that is already taken care of)
 			for (byte* src = (byte*)&header; src < (byte*)&header + rowsToBytes(header.ihl); src++) {
 				*dst_cursor = key.encrypt(*src);
 				dst_cursor++;
 			}
 						
+			//also copy and encrypt the payload
 			encryption_type* encrypted_payload = dst_cursor;
 			for (byte* src = const_cast<byte*>(payload); src < payload + payload_length; src++) {
 				*dst_cursor = key.encrypt(*src);
 				dst_cursor++;
 			}
-						
-			//TODO: factor encryption logic out into its own function to separate it from tunneling logic
-			
+									
 			struct iphdr* in_situ_header = (struct iphdr*)buffer;
 			in_situ_header->check = csum((unsigned short *)buffer, new_header.tot_len);
 			
@@ -173,6 +191,8 @@ class PacketPayload {
 		PacketPayload decrypt(const PrivateEncryptionKey<encryption_type> key) const {
 			byte* buffer = new byte[buffer_length];
 			
+			//copy the encrypted packet to the buffer that will represent the unencrypted packet
+			//the source is of the encryption type, which may be a different length than a single byte, but the pointer operations take care of that
 			byte* dst = buffer;
 			for (encryption_type* src = (encryption_type*)payload; (byte*)src < payload + payload_length; src++) {
 				*dst = key.decrypt(*src);
@@ -194,7 +214,6 @@ class PacketPayload {
 			
 			sockaddr_in sin = {0};
 			
-			//this IS sending out ARP requests and getting replies successfully!
 			bool success = ::sendto(sock, buffer, header_length + payload_length, 0, (struct sockaddr *)&sin, sizeof(sin)) > 0;
 			if (!success) {
 				cerr << "Error " << errno << ": " << strerror(errno) << endl;
@@ -236,6 +255,7 @@ int main() {
 	printf("Starting...\n");
 	
 	PrivateEncryptionKey<uint32_t> key(37, 19);
+	cout << "Generated key!" << endl;
 	
     int packet_size;
 
@@ -273,7 +293,7 @@ int main() {
 			
 			try {
 				cout << "Received packet: " << (string)payload << endl;
-				PacketPayload encrypted = payload.encrypt(key);
+				PacketPayload encrypted = payload.encrypt(key.pub_key);
 				cout << " -> Sending: " << (string)encrypted << endl;
 				encrypted.send(send_sock);
 				cout << " -> Decrypted: " << (string)(encrypted.decrypt(key)) << endl;
