@@ -10,6 +10,7 @@
 #include <string>
 #include <sstream>
 #include <exception>
+#include <algorithm>
 
 using namespace std;
 
@@ -41,6 +42,30 @@ unsigned short csum(unsigned short *ptr,int nbytes)
 	return(answer);
 }
 
+template<typename T>
+T mod_inverse(T a, T m) 
+{ 
+    T top_left = m;
+	long long int top_right = 0;
+	
+	T bottom_left = a;
+	long long int bottom_right = 1;
+	
+	while (bottom_left > 0) {		
+		T quotient = top_left / bottom_left;
+		
+		T old_bottom_left = bottom_left;
+		bottom_left = top_left % bottom_left;
+		top_left = old_bottom_left;
+		
+		long long int old_bottom_right = bottom_right;
+		bottom_right = top_right - quotient * bottom_right;
+		top_right = old_bottom_right;
+	}
+  
+    return top_right < 0 ? top_right + m : top_right; 
+} 
+
 
 inline unsigned int rowsToBytes(unsigned int rows) {
 	return rows * row_size;
@@ -51,6 +76,44 @@ typedef uint32_t ipaddr_t;
 typedef int sock_t;
 
 class OversizedPacketException : exception {
+};
+
+template<typename T>
+class PrivateEncryptionKey {
+	public:
+		PrivateEncryptionKey(T in_p, T in_q) :
+			priv_p(in_p),
+			priv_q(in_q),
+			pub_n(in_p * in_q),
+			totient((priv_p - 1) * (priv_q - 1)),
+			pub_e(smallest_coprime(totient)),
+			priv_d(mod_inverse(pub_e, totient)) {}
+			
+		T encrypt(byte unencrypted) const {
+			return mod_exponent(unencrypted, pub_e, pub_n);
+		}
+		
+		T decrypt(T encrypted) const {
+			return mod_exponent(encrypted, priv_d, pub_n);
+		}
+	private:
+		const T priv_p, priv_q, totient, pub_e, pub_n, priv_d;
+		
+		static T smallest_coprime(T num) {
+			T guess = 2;
+			while (__gcd(guess, num) > 1) {
+				guess++;
+			}
+			return guess;
+		}
+		
+		static T mod_exponent(T num, T exponent, T mod) {
+			T working_power = num;
+			for (T i = 0; i < exponent - 1; i++) {
+				working_power = (working_power * num) % mod;
+			}
+			return working_power;
+		}
 };
 
 class PacketPayload {
@@ -65,7 +128,9 @@ class PacketPayload {
 			delete[] payload;
 		}
 		
-		PacketPayload encrypt() const {
+		typedef uint32_t encryption_type;
+		
+		PacketPayload encrypt(const PrivateEncryptionKey<encryption_type>& key) const {
 			struct iphdr new_header;
 			new_header.ihl = 5; //TODO: abstract this out
 			new_header.tot_len = rowsToBytes(new_header.ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier;
@@ -84,18 +149,17 @@ class PacketPayload {
 			memcpy(buffer, &new_header, rowsToBytes(new_header.ihl)); //copy the new header to the beginning of the packet
 			
 			byte* encrypted_header = buffer + rowsToBytes(new_header.ihl);
-			byte* dst_cursor = encrypted_header;
+			encryption_type* dst_cursor = (encryption_type*)encrypted_header;
 			
 			for (byte* src = (byte*)&header; src < (byte*)&header + rowsToBytes(header.ihl); src++) {
-				dst_cursor[0] = *src;
-
-				dst_cursor += size_multiplier;
+				*dst_cursor = key.encrypt(*src);
+				dst_cursor++;
 			}
 						
-			byte* encrypted_payload = dst_cursor;
+			encryption_type* encrypted_payload = dst_cursor;
 			for (byte* src = const_cast<byte*>(payload); src < payload + payload_length; src++) {
-				dst_cursor += size_multiplier;
-				*dst_cursor = *src;
+				*dst_cursor = key.encrypt(*src);
+				dst_cursor++;
 			}
 						
 			//TODO: factor encryption logic out into its own function to separate it from tunneling logic
@@ -106,11 +170,13 @@ class PacketPayload {
 			return PacketPayload((struct iphdr*)buffer, new_header.tot_len);
 		}
 		
-		PacketPayload decrypt() const {
+		PacketPayload decrypt(const PrivateEncryptionKey<encryption_type> key) const {
 			byte* buffer = new byte[buffer_length];
 			
-			for (byte* src = const_cast<byte*>(payload), *dst = buffer; src < payload + payload_length; src += size_multiplier, dst++) {
-				dst[0] = *src;
+			byte* dst = buffer;
+			for (encryption_type* src = (encryption_type*)payload; (byte*)src < payload + payload_length; src++) {
+				*dst = key.decrypt(*src);
+				dst++;
 			}
 			
 			struct iphdr old_header = *((struct iphdr *) buffer);
@@ -145,7 +211,7 @@ class PacketPayload {
 		}
 		
 	private:
-		const static unsigned int size_multiplier = 3;
+		const static unsigned int size_multiplier = sizeof(encryption_type);
 		const struct iphdr header;
 		const unsigned int payload_length;
 		const byte* payload;
@@ -169,20 +235,7 @@ class PacketPayload {
 int main() {
 	printf("Starting...\n");
 	
-	struct iphdr pkt;
-	pkt.saddr = 0x15419;
-	pkt.daddr = 0x14101;
-	pkt.ihl = 5;
-	byte* payload = (byte*)&pkt +  pkt.ihl;
-	*payload = 0;
-	pkt.tot_len = rowsToBytes(10);
-	PacketPayload packet(&pkt, pkt.tot_len);
-	cout << "Packet:" << (string)packet << endl;
-	PacketPayload encrypted = packet.encrypt();
-	cout << "Encrypted: " << (string)encrypted << endl;
-	cout << "Decrypted: " << (string)(encrypted.decrypt()) << endl;
-	
-	exit(0);
+	PrivateEncryptionKey<uint32_t> key(37, 19);
 	
     int packet_size;
 
@@ -220,10 +273,10 @@ int main() {
 			
 			try {
 				cout << "Received packet: " << (string)payload << endl;
-				PacketPayload encrypted = payload.encrypt();
+				PacketPayload encrypted = payload.encrypt(key);
 				cout << " -> Sending: " << (string)encrypted << endl;
-				cout << " -> Decrypted" << (string)(encrypted.decrypt()) << endl;
 				encrypted.send(send_sock);
+				cout << " -> Decrypted: " << (string)(encrypted.decrypt(key)) << endl;
 			} catch (OversizedPacketException) {
 				//drop the packet
 				cerr << "Packet dropped due to being too large" << endl;
