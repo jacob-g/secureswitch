@@ -89,7 +89,6 @@ class SecureSwitchController(app_manager.RyuApp):
 		dp = msg.datapath
 		dpid = dp.id
 		
-		#extract the ethernet metadata
 		pkt = packet.Packet(msg.data)
 		eth = pkt.get_protocol(ethernet.ethernet)
 		mac_dst = eth.dst
@@ -127,6 +126,8 @@ class SecureSwitchController(app_manager.RyuApp):
 			pkt_ip = pkt.get_protocol(ipv4.ipv4)
 			ip_dst = pkt_ip.dst
 			ip_src = pkt_ip.src
+			
+			print pkt_ip
 			
 			if self.same_endnet(pkt_ip):
 				#if the two devices are on the same network, just forward the packet normally

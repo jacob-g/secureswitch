@@ -151,7 +151,6 @@ class PacketPayload {
 			struct iphdr new_header;
 			new_header.ihl = 5; //TODO: abstract this out
 			new_header.tot_len = rowsToBytes(new_header.ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier;
-			new_header.ttl = 255;
 			new_header.saddr = rand();
 			new_header.daddr = header.daddr;
 
@@ -162,12 +161,13 @@ class PacketPayload {
 			byte* buffer = new byte[buffer_length];
 			memcpy(buffer, &new_header, rowsToBytes(new_header.ihl)); //copy the new header to the beginning of the packet
 
-			byte* encrypted_header = buffer + rowsToBytes(new_header.ihl);
-			encryption_type* dst_cursor = (encryption_type*)encrypted_header;
+            //FIXME: somehow this encryption process breaks the packet!!! this is what causes the assertions to fail in Ryu!
+			encryption_type* dst_cursor = (encryption_type*)(buffer + rowsToBytes(new_header.ihl));
 
 			//TODO: join these foreach loops
 			//copy and encrypt the header (the encrypted version may use different unit sizes for each source bytes, but since dst_cursor is of type encryption_type, that is already taken care of)
 			for (byte* src = (byte*)&header; src < (byte*)&header + rowsToBytes(header.ihl); src++) {
+                cout << "Offset: " << ((byte*)dst_cursor - buffer) << endl;
 				*dst_cursor = key.encrypt(*src);
 				dst_cursor++;
 			}
@@ -178,9 +178,6 @@ class PacketPayload {
 				*dst_cursor = key.encrypt(*src);
 				dst_cursor++;
 			}
-
-			struct iphdr* in_situ_header = (struct iphdr*)buffer;
-			in_situ_header->check = csum((unsigned short *)buffer, new_header.tot_len);
 
 			return PacketPayload((struct iphdr*)buffer, new_header.tot_len);
 		}
@@ -279,14 +276,15 @@ int main() {
 	const int on = 1;
 	setsockopt (send_sock, IPPROTO_IP, IP_HDRINCL, &on, sizeof (on));
 
-    //FIXME: these are somehow unsendable after encryption
     byte* packet = new byte[buffer_length];
 	struct iphdr* pkt_ip = (struct iphdr*)packet;
 	pkt_ip->ihl = 5;
-	pkt_ip->tot_len = 35;
+	pkt_ip->tot_len = 40;
 	pkt_ip->saddr = inet_addr("100.1.2.2");
 	pkt_ip->daddr = inet_addr("100.1.2.3");
 	PacketPayload(pkt_ip, pkt_ip->tot_len).encrypt(key.pub_key).send(send_sock);
+
+	cout << (string)PacketPayload(pkt_ip, pkt_ip->tot_len).encrypt(key.pub_key).encrypt(key.pub_key).decrypt(key).decrypt(key) << endl;
 
     while (true) {
 		// recvfrom is used to read data from a socket
