@@ -178,7 +178,11 @@ class PacketPayload {
 				dst_cursor++;
 			}
 
-			return PacketPayload((struct iphdr*)buffer, new_header.tot_len);
+			PacketPayload encrypted((struct iphdr*)buffer, new_header.tot_len);
+
+			delete[] buffer;
+
+			return encrypted;
 		}
 
 		PacketPayload decrypt(const PrivateEncryptionKey<encryption_type> key) const {
@@ -194,7 +198,11 @@ class PacketPayload {
 
 			struct iphdr old_header = *((struct iphdr *) buffer);
 
-			return PacketPayload((struct iphdr*)buffer, old_header.tot_len);
+			PacketPayload decrypted((struct iphdr*)buffer, old_header.tot_len);
+
+			delete[] buffer;
+
+			return decrypted;
 		}
 
 		bool send(sock_t sock) const {
