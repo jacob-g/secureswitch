@@ -161,14 +161,13 @@ class PacketPayload {
 			byte* buffer = new byte[buffer_length];
 			memcpy(buffer, &new_header, rowsToBytes(new_header.ihl)); //copy the new header to the beginning of the packet
 
-            //FIXME: somehow this encryption process breaks the packet!!! this is what causes the assertions to fail in Ryu!
 			encryption_type* dst_cursor = (encryption_type*)(buffer + rowsToBytes(new_header.ihl));
 
 			//TODO: join these foreach loops
 			//copy and encrypt the header (the encrypted version may use different unit sizes for each source bytes, but since dst_cursor is of type encryption_type, that is already taken care of)
+			//FIXME: we're getting an off-by-one error where the cursor is overwriting something in the packet header!
 			for (byte* src = (byte*)&header; src < (byte*)&header + rowsToBytes(header.ihl); src++) {
-                cout << "Offset: " << ((byte*)dst_cursor - buffer) << endl;
-				*dst_cursor = key.encrypt(*src);
+				//*dst_cursor = key.encrypt(*src);
 				dst_cursor++;
 			}
 
@@ -279,12 +278,14 @@ int main() {
     byte* packet = new byte[buffer_length];
 	struct iphdr* pkt_ip = (struct iphdr*)packet;
 	pkt_ip->ihl = 5;
-	pkt_ip->tot_len = 40;
+	pkt_ip->tot_len = 356;
 	pkt_ip->saddr = inet_addr("100.1.2.2");
 	pkt_ip->daddr = inet_addr("100.1.2.3");
-	PacketPayload(pkt_ip, pkt_ip->tot_len).encrypt(key.pub_key).send(send_sock);
-
-	cout << (string)PacketPayload(pkt_ip, pkt_ip->tot_len).encrypt(key.pub_key).encrypt(key.pub_key).decrypt(key).decrypt(key) << endl;
+	packet[20] = rand();
+	packet[21] = rand();
+	packet[22] = rand();
+	packet[23] = rand();
+	PacketPayload(pkt_ip, pkt_ip->tot_len).send(send_sock);
 
     while (true) {
 		// recvfrom is used to read data from a socket
