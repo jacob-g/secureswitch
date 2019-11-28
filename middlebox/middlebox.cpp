@@ -153,6 +153,7 @@ class PacketPayload {
 			new_header.tot_len = rowsToBytes(new_header.ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier;
 			new_header.saddr = rand();
 			new_header.daddr = header.daddr;
+			new_header.protocol = 0;
 
 			if (header.tot_len > buffer_length) {
 				throw OversizedPacketException();
@@ -165,9 +166,8 @@ class PacketPayload {
 
 			//TODO: join these foreach loops
 			//copy and encrypt the header (the encrypted version may use different unit sizes for each source bytes, but since dst_cursor is of type encryption_type, that is already taken care of)
-			//FIXME: we're getting an off-by-one error where the cursor is overwriting something in the packet header!
 			for (byte* src = (byte*)&header; src < (byte*)&header + rowsToBytes(header.ihl); src++) {
-				//*dst_cursor = key.encrypt(*src);
+				*dst_cursor = key.encrypt(*src);
 				dst_cursor++;
 			}
 
@@ -274,18 +274,6 @@ int main() {
 	}
 	const int on = 1;
 	setsockopt (send_sock, IPPROTO_IP, IP_HDRINCL, &on, sizeof (on));
-
-    byte* packet = new byte[buffer_length];
-	struct iphdr* pkt_ip = (struct iphdr*)packet;
-	pkt_ip->ihl = 5;
-	pkt_ip->tot_len = 356;
-	pkt_ip->saddr = inet_addr("100.1.2.2");
-	pkt_ip->daddr = inet_addr("100.1.2.3");
-	packet[20] = rand();
-	packet[21] = rand();
-	packet[22] = rand();
-	packet[23] = rand();
-	PacketPayload(pkt_ip, pkt_ip->tot_len).send(send_sock);
 
     while (true) {
 		// recvfrom is used to read data from a socket
