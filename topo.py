@@ -4,8 +4,8 @@ from mininet.cli import CLI
 
 net = Mininet()
 
-s0 = net.addSwitch('s0')
-s1 = net.addSwitch('s1')
+s0 = net.addSwitch('s0', ip='100.0.0.0')
+s1 = net.addSwitch('s1', ip='100.1.0.0')
 
 c0 = net.addController('c0', controller=RemoteController)
 

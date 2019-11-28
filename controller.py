@@ -39,6 +39,8 @@ class SecureSwitchController(app_manager.RyuApp):
 		ofproto = datapath.ofproto
 		parser = datapath.ofproto_parser
 		
+		#TODO: connect each switch with its respective endnet
+		
 		#find all attached devices to this switch
 		for ip_list in self.end_nets.values():
 			for ip in ip_list:
@@ -81,14 +83,14 @@ class SecureSwitchController(app_manager.RyuApp):
 				
 		datapath.send_msg(parser.OFPFlowMod(datapath=datapath, priority=priority, match=match, instructions=[parser.OFPInstructionActions(datapath.ofproto.OFPIT_APPLY_ACTIONS, actions)], idle_timeout=timeout))
 		return
-	
+		
 	@set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
 	def packet_in_handler(self, ev):
 		#get all the packet metadata
 		msg = ev.msg
 		dp = msg.datapath
 		dpid = dp.id
-		
+						
 		pkt = packet.Packet(msg.data)
 		eth = pkt.get_protocol(ethernet.ethernet)
 		mac_dst = eth.dst
@@ -176,7 +178,8 @@ class SecureSwitchController(app_manager.RyuApp):
 						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
 						
 						return
-					elif False and self.is_incoming_unencrypted(mac_dst, pkt_ip):
+					elif False and self.is_incoming_decrypted(mac_dst, pkt_ip):
+						print "Incoming decrypted packet", pkt_ip
 						#TODO: forward the packet to the appropriate device and add a flow
 						return
 						
@@ -203,7 +206,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						
 						return
 						
-					elif self.is_outgoing_encypted(mac_dst, pkt_ip):
+					elif self.is_outgoing_encrypted(mac_dst, pkt_ip):
 						#TODO: better detect IP packets sent from the encryptor
 						print "ENCRYPTED from:", pkt_ip.src, "to:", pkt_ip.dst
 						print " -> src:", mac_src, "dst:", mac_dst
@@ -212,6 +215,8 @@ class SecureSwitchController(app_manager.RyuApp):
 					else:
 						print "Dropped IP packet", pkt_ip, eth
 						return
+				else:
+					print "Dropped IP packet not in endnet", pkt_ip
 				
 		#if we received a packet of unknown protocol, defensively drop it
 		return
@@ -232,13 +237,13 @@ class SecureSwitchController(app_manager.RyuApp):
 	def is_incoming_encrypted(self, eth_dst, pkt_ip):
 		return eth_dst == self.switch_interchange_mac
 		
-	def is_incoming_encrypted(self, eth_dst, pkt_ip):
+	def is_incoming_decrypted(self, eth_dst, pkt_ip):
 		return eth_dst == self.switch_local_mac
 	
 	def is_outgoing_unencrypted(self, eth_dst, pkt_ip):
 		return eth_dst == self.switch_local_mac
 		
-	def is_outgoing_encypted(self, eth_dst, pkt_ip):
+	def is_outgoing_encrypted(self, eth_dst, pkt_ip):
 		return eth_dst == self.switch_encrypted_mac
 
 	@set_ev_cls(ofp_event.EventOFPFlowRemoved, MAIN_DISPATCHER)
