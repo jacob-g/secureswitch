@@ -153,12 +153,12 @@ class PacketPayload {
 		PacketPayload encrypt(const PublicEncryptionKey<encryption_type>& key) const {
 			struct iphdr new_header;
 			new_header.ihl = 5; //TODO: abstract this out
-			new_header.tot_len = rowsToBytes(new_header.ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier;
+			new_header.tot_len = htons(rowsToBytes(new_header.ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier);
 			new_header.saddr = rand();
 			new_header.daddr = header.daddr;
 			new_header.protocol = 0;
 
-			if (header.tot_len > buffer_length) {
+			if (ntohs(header.tot_len) > buffer_length) {
 				throw OversizedPacketException();
 			}
 
@@ -181,7 +181,7 @@ class PacketPayload {
 				dst_cursor++;
 			}
 
-			PacketPayload encrypted((struct iphdr*)buffer, new_header.tot_len);
+			PacketPayload encrypted((struct iphdr*)buffer, ntohs(new_header.tot_len));
 
 			delete[] buffer;
 
@@ -201,7 +201,7 @@ class PacketPayload {
 
 			struct iphdr old_header = *((struct iphdr *) buffer);
 
-			PacketPayload decrypted((struct iphdr*)buffer, old_header.tot_len);
+			PacketPayload decrypted((struct iphdr*)buffer, ntohs(old_header.tot_len));
 
 			delete[] buffer;
 
@@ -221,9 +221,9 @@ class PacketPayload {
             memcpy(buffer, &header, header_length);
             memcpy(buffer + header_length, payload, payload_length);
 
-            cout << "Total length: " << header.tot_len << endl;
+            cout << "Send size: " << ntohs(header.tot_len) << endl;
 
-            bool result = sendto(sock, buffer, header.tot_len, 0, (struct sockaddr *) &sin, sizeof (sin)) < 0;
+            bool result = sendto(sock, buffer, ntohs(header.tot_len), 0, (struct sockaddr *) &sin, sizeof (sin)) < 0;
             delete[] buffer;
 
             return result;
@@ -297,9 +297,9 @@ int main() {
             struct iphdr *ip_packet = (struct iphdr *)(buffer + sizeof(struct ethhdr));
 
 			try {
-                PacketPayload payload(ip_packet, ntohs(ip_packet->tot_len));
+                PacketPayload payload(ip_packet, packet_size - sizeof(struct iphdr));
 
-                cout << "Received packet: " << (string)payload << endl;
+                cout << "Received packet: " << (string)payload << " of size " << packet_size << endl;
 
                 switch (last_eth_src_byte) {
                     case unencrypted_source_last_eth_byte:

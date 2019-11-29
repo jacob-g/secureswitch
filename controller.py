@@ -173,7 +173,6 @@ class SecureSwitchController(app_manager.RyuApp):
 				if self.in_endnet(ip_dst):
 					#handle packets that were sent through SecureSwitch
 					if self.is_incoming_encrypted(switch_endnet, mac_dst, pkt_ip):
-						#FIXME: this treats all outbound traffic from the encryptor the same! handle this with ARP
 						#an encrypted packet is inbound, forward it to the encryptor
 						print "Inbound encrypted packet on endnet", switch_endnet, pkt_ip
 						
@@ -194,6 +193,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
 						
 						return
+						
 					elif self.is_incoming_decrypted(switch_endnet, mac_src, mac_dst, pkt_ip):
 						print "Inbound decrypted packet on endnet", switch_endnet, pkt_ip
 						data = None
