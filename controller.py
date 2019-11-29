@@ -103,6 +103,8 @@ class SecureSwitchController(app_manager.RyuApp):
 		mac_src = eth.src
 										
 		in_port = msg.match['in_port']
+		
+		switch_endnet = msg.cookie
 				
 		if eth.ethertype == ether_types.ETH_TYPE_ARP:
 			pkt_arp = pkt.get_protocol(arp.arp)
@@ -113,7 +115,10 @@ class SecureSwitchController(app_manager.RyuApp):
 			if pkt_arp.opcode == arp.ARP_REQUEST:
 				if pkt_arp.src_ip in self.end_net_encryption_devices.values():
 					print "Received ARP request for encryptor:", pkt_arp
-					self.send_arp_response(dp, in_port, self.switch_encrypted_mac, pkt_arp.dst_ip, eth.src, pkt_arp.src_ip)
+					if self.endnet_of(pkt_arp.dst_ip) == switch_endnet:
+						self.send_arp_response(dp, in_port, self.switch_local_mac, pkt_arp.dst_ip, eth.src, pkt_arp.src_ip)
+					else:
+						self.send_arp_response(dp, in_port, self.switch_encrypted_mac, pkt_arp.dst_ip, eth.src, pkt_arp.src_ip)
 				elif mac_src != self.switch_local_mac:
 					print "Received ARP request from local device:", pkt_arp
 					self.send_arp_response(dp, in_port, self.switch_local_mac, pkt_arp.dst_ip, eth.src, pkt_arp.src_ip)
@@ -121,7 +126,7 @@ class SecureSwitchController(app_manager.RyuApp):
 				
 			elif pkt_arp.opcode == arp.ARP_REPLY: #we received an ARP response, so record the MAC and IP addresses
 				print "Received ARP response:", pkt_arp
-				if msg.cookie == self.unknown_endnet_value and self.endnet_of(pkt_arp.src_ip) != -1:
+				if switch_endnet == self.unknown_endnet_value and self.endnet_of(pkt_arp.src_ip) != -1:
 					print "Setting endnet"
 					self.add_default_flow_entry(dp, self.endnet_of(pkt_arp.src_ip))
 				return
@@ -166,11 +171,11 @@ class SecureSwitchController(app_manager.RyuApp):
 				
 			else:
 				if self.in_endnet(ip_dst):
-					switch_endnet = msg.cookie
 					#handle packets that were sent through SecureSwitch
 					if self.is_incoming_encrypted(switch_endnet, mac_dst, pkt_ip):
+						#FIXME: this treats all outbound traffic from the encryptor the same! handle this with ARP
 						#an encrypted packet is inbound, forward it to the encryptor
-						print "Inbound encrypted packet", pkt_ip
+						print "Inbound encrypted packet on endnet", switch_endnet, pkt_ip
 						
 						encryptor_ip = self.end_net_encryption_devices[switch_endnet]
 						encryptor_mac = self.device_macs[encryptor_ip]
@@ -189,9 +194,25 @@ class SecureSwitchController(app_manager.RyuApp):
 						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
 						
 						return
-					elif False and self.is_incoming_decrypted(mac_dst, pkt_ip):
-						print "Incoming decrypted packet", pkt_ip
-						#TODO: forward the packet to the appropriate device and add a flow
+					elif self.is_incoming_decrypted(switch_endnet, mac_src, mac_dst, pkt_ip):
+						print "Inbound decrypted packet on endnet", switch_endnet, pkt_ip
+						data = None
+						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+							data = msg.data
+							
+						final_mac = self.device_macs[ip_dst]
+											
+						actions = [
+							parser.OFPActionSetField(eth_src=self.switch_local_mac),
+							parser.OFPActionSetField(eth_dst=final_mac),
+							parser.OFPActionOutput(self.device_ports[final_mac])
+						]
+						
+						data = None
+						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+							data = msg.data
+						
+						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
 						return
 						
 					elif self.is_outgoing_unencrypted(mac_dst, pkt_ip):
@@ -200,7 +221,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						encryptor_mac = self.device_macs[encryptor_ip]
 						encryptor_port = self.device_ports[encryptor_mac]
 						
-						print "UNENCRYPTED to:", pkt_ip.src, "to", pkt_ip.dst, "encrypting with", encryptor_ip, "on port", encryptor_port
+						print "Outbound unencrypted to:", pkt_ip.src, "to", pkt_ip.dst, "encrypting with", encryptor_ip, "on port", encryptor_port
 						print " -> src:", mac_src, "dst:", mac_dst
 												
 						actions = [
@@ -220,7 +241,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						return
 						
 					elif self.is_outgoing_encrypted(mac_dst, pkt_ip):
-						print "ENCRYPTED from:", pkt_ip.src, "to:", pkt_ip.dst
+						print "Outbound encrypted from:", pkt_ip.src, "to:", pkt_ip.dst
 						print " -> src:", mac_src, "dst:", mac_dst
 						
 						actions = [
@@ -262,8 +283,8 @@ class SecureSwitchController(app_manager.RyuApp):
 	def is_incoming_encrypted(self, endnet, eth_dst, pkt_ip):
 		return eth_dst == self.switch_interchange_mac and self.endnet_of(pkt_ip.dst) == endnet
 		
-	def is_incoming_decrypted(self, eth_dst, pkt_ip):
-		return eth_dst == self.switch_local_mac
+	def is_incoming_decrypted(self, endnet, mac_src, eth_dst, pkt_ip):
+		return self.endnet_of(pkt_ip.dst) == endnet and mac_src == self.device_macs[self.end_net_encryption_devices[endnet]] and eth_dst == self.switch_local_mac
 	
 	def is_outgoing_unencrypted(self, eth_dst, pkt_ip):
 		return eth_dst == self.switch_local_mac

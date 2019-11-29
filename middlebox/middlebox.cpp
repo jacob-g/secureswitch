@@ -217,10 +217,6 @@ class PacketPayload {
             byte* buffer = new byte[buffer_length];
 
             const unsigned int header_length = rowsToBytes(header.ihl);
-            cout << "Sending address: " << ipToString(header.saddr) << endl;
-            cout << "Receiving address: " << ipToString(header.daddr) << endl;
-            cout << "HLEN: " << header_length << endl;
-            cout << "PLEN: " << payload_length << endl;
 
             memcpy(buffer, &header, header_length);
             memcpy(buffer + header_length, payload, payload_length);
