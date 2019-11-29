@@ -75,6 +75,9 @@ typedef uint8_t byte;
 typedef uint32_t ipaddr_t;
 typedef int sock_t;
 
+const byte encrypted_source_last_eth_byte = 3;
+const byte unencrypted_source_last_eth_byte = 4;
+
 class OversizedPacketException : exception {
 };
 
@@ -292,16 +295,36 @@ int main() {
 		}
 
 		if (packet_size >= sizeof(struct ethhdr) + sizeof(struct iphdr)) {
-			struct iphdr *ip_packet = (struct iphdr *)(buffer + sizeof(struct ethhdr));
+            struct ethhdr* eth_header = (struct ethhdr*)buffer;
+            const byte last_eth_src_byte = eth_header->h_source[5];
 
-			PacketPayload payload(ip_packet, ntohs(ip_packet->tot_len));
+            struct iphdr *ip_packet = (struct iphdr *)(buffer + sizeof(struct ethhdr));
 
 			try {
-				cout << "Received packet: " << (string)payload << endl;
-				PacketPayload encrypted = payload.encrypt(key.pub_key);
-				cout << " -> Sending: " << (string)encrypted << endl;
-				encrypted.send(send_sock);
-				cout << " -> Decrypted: " << (string)(encrypted.decrypt(key)) << endl;
+                PacketPayload payload(ip_packet, ntohs(ip_packet->tot_len));
+
+                cout << "Received packet: " << (string)payload << endl;
+
+                switch (last_eth_src_byte) {
+                    case unencrypted_source_last_eth_byte:
+                        cout << " -> Encrypting..." << endl;
+                        {
+                            PacketPayload encrypted = payload.encrypt(key.pub_key);
+                            encrypted.send(send_sock);
+                        }
+                        break;
+                    case encrypted_source_last_eth_byte:
+                        cout << " -> Decrypting..." << endl;
+                        {
+                            PacketPayload decrypted = payload.decrypt(key);
+                            decrypted.send(send_sock);
+                        }
+                        break;
+                    default:
+                        cout << " -> Dropped" << endl;
+                }
+
+
 			} catch (OversizedPacketException) {
 				//drop the packet
 				cerr << "Packet dropped due to being too large" << endl;
