@@ -17,19 +17,20 @@ class SecureSwitchController(app_manager.RyuApp):
 	switch_interchange_mac = "00:00:00:00:01:02"
 	switch_encrypted_mac = "00:00:00:00:01:03"
 	
+	unknown_endnet_value = 0
+	
 	end_nets = {
-		0: ["100.0.0.1", "100.0.0.2"],
-		1: ["100.1.0.1", "100.1.0.2"]
+		1: ["100.1.0.1", "100.1.0.2"],
+		2: ["100.2.0.1", "100.2.0.2"]
 	}
 	end_net_encryption_devices = {
-		0: "100.0.0.1",
-		1: "100.1.0.1"
+		1: "100.1.0.1",
+		2: "100.2.0.1"
 	}
 	device_macs = {}
 	device_ports = {}
 
 	def __init__(self, *args, **kwargs):
-	
 		super(SecureSwitchController, self).__init__(*args, **kwargs)
 		
 	@set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -39,15 +40,20 @@ class SecureSwitchController(app_manager.RyuApp):
 		ofproto = datapath.ofproto
 		parser = datapath.ofproto_parser
 		
-		#TODO: connect each switch with its respective endnet
+		self.add_default_flow_entry(datapath, self.unknown_endnet_value)
 		
 		#find all attached devices to this switch
 		for ip_list in self.end_nets.values():
 			for ip in ip_list:
 				self.send_arp_request(datapath, self.switch_local_mac, "0.0.0.0", ip)
 		
-		#say that for any unmatched packets, send them to the controller
-		self.add_flow_entry(datapath, 0, parser.OFPMatch(), [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)], 0)
+		return
+		
+	def add_default_flow_entry(self, datapath, cookie):
+		ofproto = datapath.ofproto
+		parser = datapath.ofproto_parser
+		
+		self.add_flow_entry(datapath, 0, parser.OFPMatch(), [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)], 0, cookie)
 		return
 		
 	def send_arp_request(self, dp, src_mac, src_ip, dst_ip):
@@ -76,21 +82,21 @@ class SecureSwitchController(app_manager.RyuApp):
 		dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=ofproto.OFP_NO_BUFFER, in_port=ofproto.OFPP_CONTROLLER, actions=[ parser.OFPActionOutput(port) ], data=p.data))
 		return
 				 
-	def add_flow_entry(self, datapath, priority, match, actions, timeout=10):
+	def add_flow_entry(self, datapath, priority, match, actions, timeout=10, cookie=None):
 		# helper function to insert flow entries into flow table
 		# by default, the idle_timeout is set to be 10 seconds
 		parser = datapath.ofproto_parser
 				
-		datapath.send_msg(parser.OFPFlowMod(datapath=datapath, priority=priority, match=match, instructions=[parser.OFPInstructionActions(datapath.ofproto.OFPIT_APPLY_ACTIONS, actions)], idle_timeout=timeout))
+		datapath.send_msg(parser.OFPFlowMod(datapath=datapath, priority=priority, match=match, instructions=[parser.OFPInstructionActions(datapath.ofproto.OFPIT_APPLY_ACTIONS, actions)], idle_timeout=timeout, cookie=cookie))
 		return
 		
 	@set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-	def packet_in_handler(self, ev):
+	def packet_in_handler(self, ev):	
 		#get all the packet metadata
 		msg = ev.msg
 		dp = msg.datapath
 		dpid = dp.id
-						
+								
 		pkt = packet.Packet(msg.data)
 		eth = pkt.get_protocol(ethernet.ethernet)
 		mac_dst = eth.dst
@@ -114,7 +120,10 @@ class SecureSwitchController(app_manager.RyuApp):
 				return
 				
 			elif pkt_arp.opcode == arp.ARP_REPLY: #we received an ARP response, so record the MAC and IP addresses
-				print "Received ARP response:", pkt_arp	
+				print "Received ARP response:", pkt_arp
+				if msg.cookie == self.unknown_endnet_value and self.endnet_of(pkt_arp.src_ip) != -1:
+					print "Setting endnet"
+					self.add_default_flow_entry(dp, self.endnet_of(pkt_arp.src_ip))
 				return
 		
 		elif eth.ethertype == ether_types.ETH_TYPE_IP:
@@ -158,7 +167,7 @@ class SecureSwitchController(app_manager.RyuApp):
 				
 			else:
 				if self.in_endnet(ip_dst):
-					print "Destined to endnet"
+					src_endnet = msg.cookie
 					#handle packets that were sent through SecureSwitch
 					if False and self.is_incoming_encrypted(mac_dst, pkt_ip):
 						#the packet is incoming to our network
@@ -209,6 +218,7 @@ class SecureSwitchController(app_manager.RyuApp):
 					elif self.is_outgoing_encrypted(mac_dst, pkt_ip):
 						#TODO: better detect IP packets sent from the encryptor
 						print "ENCRYPTED from:", pkt_ip.src, "to:", pkt_ip.dst
+						print "Cookie:", msg.cookie
 						print " -> src:", mac_src, "dst:", mac_dst
 						return
 						
