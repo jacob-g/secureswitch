@@ -240,7 +240,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						
 						return
 						
-					elif self.is_outgoing_encrypted(mac_dst, pkt_ip):
+					elif self.is_outgoing_encrypted(mac_dst, pkt_ip) and self.endnet_of(ip_src) == -1:
 						print "Outbound encrypted from:", pkt_ip.src, "to:", pkt_ip.dst
 						print " -> src:", mac_src, "dst:", mac_dst
 						

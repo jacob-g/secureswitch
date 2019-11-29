@@ -314,6 +314,7 @@ int main() {
                         {
                             PacketPayload decrypted = payload.decrypt(key);
                             decrypted.send(send_sock);
+                            cout << " -> Result: " << (string)decrypted << endl;
                         }
                         break;
                     default:
