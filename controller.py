@@ -180,7 +180,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						encryptor_mac = self.device_macs[encryptor_ip]
 						encryptor_port = self.device_ports[encryptor_mac]
 						
-						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, encryptor_port, self.switch_encrypted_mac, encryptor_mac)
+						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, pkt_ip.dst, encryptor_port, self.switch_encrypted_mac, encryptor_mac)
 						
 						return
 						
@@ -189,7 +189,7 @@ class SecureSwitchController(app_manager.RyuApp):
 							
 						final_mac = self.device_macs[ip_dst]
 						
-						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, self.device_ports[final_mac], self.switch_local_mac, final_mac)
+						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, pkt_ip.dst, self.device_ports[final_mac], self.switch_local_mac, final_mac)
 						
 						return
 						
@@ -201,7 +201,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						
 						print "Outbound unencrypted on endnet", switch_endnet, " from:", pkt_ip.src, "to", pkt_ip.dst, "encrypting with", encryptor_ip, "on port", encryptor_port
 						
-						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, encryptor_port, self.switch_unencrypted_mac, encryptor_mac)
+						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, pkt_ip.dst, encryptor_port, self.switch_unencrypted_mac, encryptor_mac)
 												
 						return
 						
@@ -209,7 +209,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						print "Outbound encrypted on endnet", switch_endnet, " from:", pkt_ip.src, "to:", pkt_ip.dst
 						print " -> src:", mac_src, "dst:", mac_dst
 						
-						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, 1, self.switch_local_mac, self.switch_interchange_mac)
+						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, pkt_ip.dst, 1, self.switch_local_mac, self.switch_interchange_mac)
 						
 						return
 						
@@ -225,7 +225,7 @@ class SecureSwitchController(app_manager.RyuApp):
 		#if we received a packet of unknown protocol, defensively drop it
 		return
 		
-	def send_with_flow(self, dp, msg, in_port, orig_eth_src, orig_eth_dst, out_port, new_eth_src, new_eth_dst):
+	def send_with_flow(self, dp, msg, in_port, orig_eth_src, orig_eth_dst, orig_ip_dst, out_port, new_eth_src, new_eth_dst):
 		ofproto = dp.ofproto
 		parser = dp.ofproto_parser
 		
@@ -241,7 +241,7 @@ class SecureSwitchController(app_manager.RyuApp):
 		
 		dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
 		
-		self.add_flow_entry(dp, 1, parser.OFPMatch(eth_type=0x800, in_port=in_port, eth_src=orig_eth_src, eth_dst=orig_eth_dst), actions, 300)
+		self.add_flow_entry(dp, 1, parser.OFPMatch(eth_type=0x800, in_port=in_port, ipv4_dst=orig_ip_dst, eth_src=orig_eth_src, eth_dst=orig_eth_dst), actions, 300)
 		
 		return
 				
