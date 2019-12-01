@@ -142,7 +142,6 @@ class PacketPayload {
 		PacketPayload(const struct iphdr* ip_packet, const uint16_t length) :
 			header(*ip_packet),
 			payload_length(length - rowsToBytes(header.ihl)),
-			//FIXME: somewhere this is breaking the packet!
 			payload(payloadFrom(ip_packet, rowsToBytes(header.ihl), payload_length)) {
 		}
 
@@ -165,7 +164,7 @@ class PacketPayload {
 				throw OversizedPacketException();
 			}
 
-			byte* buffer = new byte[buffer_length];
+			byte buffer[buffer_length];
 			memcpy(buffer, &new_header, rowsToBytes(new_header.ihl)); //copy the new header to the beginning of the packet
 
 			encryption_type* dst_cursor = (encryption_type*)(buffer + rowsToBytes(new_header.ihl));
@@ -178,7 +177,6 @@ class PacketPayload {
 				dst_cursor++;
 				counter++;
 			}
-			cout << "Header bytes: " << counter << endl;
 
 			//also copy and encrypt the payload
 			for (byte* src = const_cast<byte*>(payload); src < payload + payload_length; src++) {
@@ -186,17 +184,14 @@ class PacketPayload {
 				dst_cursor++;
 				counter++;
 			}
-			cout << "Total bytes: " << counter << endl;
 
 			PacketPayload encrypted((struct iphdr*)buffer, ntohs(new_header.tot_len));
-
-			delete[] buffer;
 
 			return encrypted;
 		}
 
 		PacketPayload decrypt(const PrivateEncryptionKey<encryption_type> key) const {
-			byte* buffer = new byte[buffer_length];
+			byte buffer[buffer_length];
 
 			//copy the encrypted packet to the buffer that will represent the unencrypted packet
 			//the source is of the encryption type, which may be a different length than a single byte, but the pointer operations take care of that
@@ -208,11 +203,7 @@ class PacketPayload {
 
 			struct iphdr old_header = *((struct iphdr *) buffer);
 
-            cout << "Packet size: " << ntohs(old_header.tot_len) << endl;
-
             PacketPayload decrypted((struct iphdr*)buffer, ntohs(old_header.tot_len));
-
-			delete[] buffer;
 
 			return decrypted;
 		}
@@ -223,16 +214,14 @@ class PacketPayload {
             sin.sin_port = htons (0);
             sin.sin_addr.s_addr = header.daddr;
 
-            byte* buffer = new byte[buffer_length];
+            byte buffer[buffer_length];
 
             const unsigned int header_length = rowsToBytes(header.ihl);
 
             memcpy(buffer, &header, header_length);
             memcpy(buffer + header_length, payload, payload_length);
 
-            cout << "Send length: " << ntohs(header.tot_len) << endl;
             bool result = sendto(sock, buffer, ntohs(header.tot_len), 0, (struct sockaddr *) &sin, sizeof (sin)) < 0;
-            delete[] buffer;
 
             return result;
 		}
@@ -251,8 +240,6 @@ class PacketPayload {
 
 		static byte* payloadFrom(const struct iphdr* ip_packet, const unsigned long int hlen, const unsigned long int plen) {
 			byte* payload = new byte[plen];
-
-			cout << "Payload length: " << plen << endl;
 
 			memcpy(payload, ((byte*)ip_packet) + hlen, plen);
 
@@ -311,26 +298,21 @@ int main() {
 			try {
                 PacketPayload payload(ip_packet, packet_size - - sizeof(struct ethhdr) - rowsToBytes(ip_packet->ihl));
 
-                cout << "Received packet: " << (string)payload << " of size " << packet_size << endl;
-
                 switch (last_eth_src_byte) {
                     case unencrypted_source_last_eth_byte:
-                        cout << " -> Encrypting..." << endl;
                         {
                             PacketPayload encrypted = payload.encrypt(key.pub_key);
                             encrypted.send(send_sock);
                         }
                         break;
                     case encrypted_source_last_eth_byte:
-                        cout << " -> Decrypting..." << endl;
                         {
                             PacketPayload decrypted = payload.decrypt(key);
                             decrypted.send(send_sock);
-                            cout << " -> Result: " << (string)decrypted << endl;
                         }
                         break;
                     default:
-                        cout << " -> Dropped" << endl;
+                        break;
                 }
 
 
