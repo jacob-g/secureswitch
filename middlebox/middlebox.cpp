@@ -5,6 +5,7 @@
 #include <netinet/ip.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netinet/ip_icmp.h>
 #include <net/ethernet.h>
 #include <iostream>
 #include <string>
@@ -141,6 +142,7 @@ class PacketPayload {
 		PacketPayload(const struct iphdr* ip_packet, const uint16_t length) :
 			header(*ip_packet),
 			payload_length(length - rowsToBytes(header.ihl)),
+			//FIXME: somewhere this is breaking the packet!
 			payload(payloadFrom(ip_packet, rowsToBytes(header.ihl), payload_length)) {
 		}
 
@@ -156,9 +158,10 @@ class PacketPayload {
 			new_header.tot_len = htons(rowsToBytes(new_header.ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier);
 			new_header.saddr = rand();
 			new_header.daddr = header.daddr;
+			new_header.version = 4;
 			new_header.protocol = 0;
 
-			if (ntohs(header.tot_len) > buffer_length) {
+			if (ntohs(new_header.tot_len) > buffer_length) {
 				throw OversizedPacketException();
 			}
 
@@ -169,17 +172,21 @@ class PacketPayload {
 
 			//TODO: join these foreach loops
 			//copy and encrypt the header (the encrypted version may use different unit sizes for each source bytes, but since dst_cursor is of type encryption_type, that is already taken care of)
+			int counter = 0;
 			for (byte* src = (byte*)&header; src < (byte*)&header + rowsToBytes(header.ihl); src++) {
 				*dst_cursor = key.encrypt(*src);
 				dst_cursor++;
+				counter++;
 			}
+			cout << "Header bytes: " << counter << endl;
 
 			//also copy and encrypt the payload
-			encryption_type* encrypted_payload = dst_cursor;
 			for (byte* src = const_cast<byte*>(payload); src < payload + payload_length; src++) {
 				*dst_cursor = key.encrypt(*src);
 				dst_cursor++;
+				counter++;
 			}
+			cout << "Total bytes: " << counter << endl;
 
 			PacketPayload encrypted((struct iphdr*)buffer, ntohs(new_header.tot_len));
 
@@ -201,7 +208,9 @@ class PacketPayload {
 
 			struct iphdr old_header = *((struct iphdr *) buffer);
 
-			PacketPayload decrypted((struct iphdr*)buffer, ntohs(old_header.tot_len));
+            cout << "Packet size: " << ntohs(old_header.tot_len) << endl;
+
+            PacketPayload decrypted((struct iphdr*)buffer, ntohs(old_header.tot_len));
 
 			delete[] buffer;
 
@@ -221,8 +230,7 @@ class PacketPayload {
             memcpy(buffer, &header, header_length);
             memcpy(buffer + header_length, payload, payload_length);
 
-            cout << "Send size: " << ntohs(header.tot_len) << endl;
-
+            cout << "Send length: " << ntohs(header.tot_len) << endl;
             bool result = sendto(sock, buffer, ntohs(header.tot_len), 0, (struct sockaddr *) &sin, sizeof (sin)) < 0;
             delete[] buffer;
 
@@ -235,7 +243,7 @@ class PacketPayload {
 			return ss.str();
 		}
 
-	private:
+    private:
 		const static unsigned int size_multiplier = sizeof(encryption_type);
 		const struct iphdr header;
 		const unsigned int payload_length;
@@ -244,7 +252,9 @@ class PacketPayload {
 		static byte* payloadFrom(const struct iphdr* ip_packet, const unsigned long int hlen, const unsigned long int plen) {
 			byte* payload = new byte[plen];
 
-			memcpy(payload, (byte*)ip_packet + hlen, plen);
+			cout << "Payload length: " << plen << endl;
+
+			memcpy(payload, ((byte*)ip_packet) + hlen, plen);
 
 			return payload;
 		}
@@ -262,10 +272,12 @@ int main() {
 
 	PrivateEncryptionKey<uint32_t> key(37, 19);
 
+    byte buffer[buffer_length];
+
     int packet_size;
 
     // Allocate string buffer to hold incoming packet data
-    unsigned char *buffer = (unsigned char *)malloc(buffer_length);
+    //unsigned char *buffer = (unsigned char *)malloc(buffer_length);
     // Open the raw socket
     sock_t sock = socket (AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
     if(sock < 0) {
@@ -297,7 +309,7 @@ int main() {
             struct iphdr *ip_packet = (struct iphdr *)(buffer + sizeof(struct ethhdr));
 
 			try {
-                PacketPayload payload(ip_packet, packet_size - sizeof(struct iphdr));
+                PacketPayload payload(ip_packet, packet_size - - sizeof(struct ethhdr) - rowsToBytes(ip_packet->ihl));
 
                 cout << "Received packet: " << (string)payload << " of size " << packet_size << endl;
 

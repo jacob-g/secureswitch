@@ -126,7 +126,7 @@ class SecureSwitchController(app_manager.RyuApp):
 				
 			elif pkt_arp.opcode == arp.ARP_REPLY: #we received an ARP response, so record the MAC and IP addresses
 				print "Received ARP response:", pkt_arp
-				if switch_endnet == self.unknown_endnet_value and self.endnet_of(pkt_arp.src_ip) != -1:
+				if switch_endnet == self.unknown_endnet_value:
 					print "Setting endnet"
 					self.add_default_flow_entry(dp, self.endnet_of(pkt_arp.src_ip))
 				return
@@ -221,7 +221,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						encryptor_mac = self.device_macs[encryptor_ip]
 						encryptor_port = self.device_ports[encryptor_mac]
 						
-						print "Outbound unencrypted to:", pkt_ip.src, "to", pkt_ip.dst, "encrypting with", encryptor_ip, "on port", encryptor_port
+						print "Outbound unencrypted on endnet", switch_endnet, " from:", pkt_ip.src, "to", pkt_ip.dst, "encrypting with", encryptor_ip, "on port", encryptor_port
 						print " -> src:", mac_src, "dst:", mac_dst
 												
 						actions = [
@@ -241,7 +241,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						return
 						
 					elif self.is_outgoing_encrypted(mac_dst, pkt_ip) and self.endnet_of(ip_src) == -1:
-						print "Outbound encrypted from:", pkt_ip.src, "to:", pkt_ip.dst
+						print "Outbound encrypted on endnet", switch_endnet, " from:", pkt_ip.src, "to:", pkt_ip.dst
 						print " -> src:", mac_src, "dst:", mac_dst
 						
 						actions = [
