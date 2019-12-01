@@ -2,24 +2,44 @@ from mininet.net import Mininet
 from mininet.node import RemoteController
 from mininet.cli import CLI
 
-net = Mininet()
+class Endnet:
+	hosts = []
 
-s1 = net.addSwitch('s1', ip='100.0.0.0')
-s2 = net.addSwitch('s2', ip='100.1.0.0')
+	def __init__(self, net, number):
+		self.switch = net.addSwitch("s%s" % number)
+		
+	def addHost(self, net, host):
+		self.hosts.append(host)
+		net.addLink(host.host, self.switch)
+		
+	def newHost(self, net, name, ip):
+		host = Host(net, name, ip)
+		self.addHost(net, host)
+		return host
+		
+class Host:
+	def __init__(self, net, name, ip):
+		self.name = name
+		self.host = net.addHost(name, ip=ip)
+		
+	def cmd(self, cmd):
+		self.host.cmd(cmd)
+
+net = Mininet()
 
 c0 = net.addController('c0', controller=RemoteController)
 
-h1enc = net.addHost('h1enc', ip="100.1.0.1")
-h11 = net.addHost('h11', ip="100.1.0.2")
+n1 = Endnet(net, 1)
+n2 = Endnet(net, 2)
+net.addLink(n1.switch, n2.switch)
 
-h2enc = net.addHost('h2enc', ip="100.2.0.1")
-h21 = net.addHost('h21', ip="100.2.0.2")
+h1enc = n1.newHost(net, 'h1enc', '100.1.0.1')
+h11 = n1.newHost(net, 'h11', "100.1.0.2")
+h12 = n1.newHost(net, 'h12', "100.1.0.3")
 
-net.addLink(s1, s2)
-net.addLink(h1enc, s1)
-net.addLink(h11, s1)
-net.addLink(h2enc, s2)
-net.addLink(h21, s2)
+h2enc = n2.newHost(net, 'h2enc', "100.2.0.1")
+h21 = n2.newHost(net, 'h21', "100.2.0.2")
+h22 = n2.newHost(net, 'h22', "100.2.0.3")
 
 #disable responding to ping packets on h0
 #TODO: figure out why h0 responds to "misrouted" ip packets

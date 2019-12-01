@@ -21,8 +21,8 @@ class SecureSwitchController(app_manager.RyuApp):
 	unknown_endnet_value = 0
 	
 	end_nets = {
-		1: ["100.1.0.1", "100.1.0.2"],
-		2: ["100.2.0.1", "100.2.0.2"]
+		1: ["100.1.0.1", "100.1.0.2", "100.1.0.3"],
+		2: ["100.2.0.1", "100.2.0.2", "100.2.0.3"]
 	}
 	end_net_encryption_devices = {
 		1: "100.1.0.1",
@@ -241,7 +241,7 @@ class SecureSwitchController(app_manager.RyuApp):
 		
 		dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
 		
-		self.add_flow_entry(dp, 1, parser.OFPMatch(eth_type=0x800, in_port=in_port, eth_src=orig_eth_src, eth_dst=orig_eth_dst), actions)
+		self.add_flow_entry(dp, 1, parser.OFPMatch(eth_type=0x800, in_port=in_port, eth_src=orig_eth_src, eth_dst=orig_eth_dst), actions, 300)
 		
 		return
 				
