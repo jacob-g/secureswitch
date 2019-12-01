@@ -82,7 +82,7 @@ class SecureSwitchController(app_manager.RyuApp):
 		dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=ofproto.OFP_NO_BUFFER, in_port=ofproto.OFPP_CONTROLLER, actions=[ parser.OFPActionOutput(port) ], data=p.data))
 		return
 				 
-	def add_flow_entry(self, datapath, priority, match, actions, timeout=10, cookie=None):
+	def add_flow_entry(self, datapath, priority, match, actions, timeout=10, cookie=0):
 		# helper function to insert flow entries into flow table
 		# by default, the idle_timeout is set to be 10 seconds
 		parser = datapath.ofproto_parser
@@ -180,39 +180,17 @@ class SecureSwitchController(app_manager.RyuApp):
 						encryptor_mac = self.device_macs[encryptor_ip]
 						encryptor_port = self.device_ports[encryptor_mac]
 						
-						actions = [
-							parser.OFPActionSetField(eth_src=self.switch_encrypted_mac),
-							parser.OFPActionSetField(eth_dst=encryptor_mac),
-							parser.OFPActionOutput(encryptor_port)
-						]
-						
-						data = None
-						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-							data = msg.data
-						
-						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
+						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, encryptor_port, self.switch_encrypted_mac, encryptor_mac)
 						
 						return
 						
 					elif self.is_incoming_decrypted(switch_endnet, mac_src, mac_dst, pkt_ip):
 						print "Inbound decrypted packet on endnet", switch_endnet, pkt_ip
-						data = None
-						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-							data = msg.data
 							
 						final_mac = self.device_macs[ip_dst]
-											
-						actions = [
-							parser.OFPActionSetField(eth_src=self.switch_local_mac),
-							parser.OFPActionSetField(eth_dst=final_mac),
-							parser.OFPActionOutput(self.device_ports[final_mac])
-						]
 						
-						data = None
-						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-							data = msg.data
+						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, self.device_ports[final_mac], self.switch_local_mac, final_mac)
 						
-						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
 						return
 						
 					elif self.is_outgoing_unencrypted(mac_dst, pkt_ip):
@@ -222,44 +200,24 @@ class SecureSwitchController(app_manager.RyuApp):
 						encryptor_port = self.device_ports[encryptor_mac]
 						
 						print "Outbound unencrypted on endnet", switch_endnet, " from:", pkt_ip.src, "to", pkt_ip.dst, "encrypting with", encryptor_ip, "on port", encryptor_port
-						print " -> src:", mac_src, "dst:", mac_dst
+						
+						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, encryptor_port, self.switch_unencrypted_mac, encryptor_mac)
 												
-						actions = [
-							parser.OFPActionSetField(eth_src=self.switch_unencrypted_mac),
-							parser.OFPActionSetField(eth_dst=encryptor_mac),
-							parser.OFPActionOutput(encryptor_port)
-						]
-						
-						data = None
-						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-							data = msg.data
-						
-						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
-						
-						#TODO: add flow
-						
 						return
 						
 					elif self.is_outgoing_encrypted(mac_dst, pkt_ip) and self.endnet_of(ip_src) == -1:
 						print "Outbound encrypted on endnet", switch_endnet, " from:", pkt_ip.src, "to:", pkt_ip.dst
 						print " -> src:", mac_src, "dst:", mac_dst
 						
-						actions = [
-							parser.OFPActionSetField(eth_dst=self.switch_interchange_mac),
-							parser.OFPActionSetField(eth_src=self.switch_local_mac),
-							parser.OFPActionOutput(1)
-						]
-						
-						data = None
-						if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-							data = msg.data
-						
-						dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
+						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, 1, self.switch_local_mac, self.switch_interchange_mac)
 						
 						return
 						
 					else:
 						print "Dropped IP packet on endnet", switch_endnet, ":", pkt_ip, eth
+						
+						self.add_flow_entry(dp, 1, parser.OFPMatch(eth_type=0x800, in_port=in_port, ipv4_src=ip_src, eth_src=mac_src, eth_dst=mac_dst), [])
+						
 						return
 				else:
 					print "Dropped IP packet not in endnet", pkt_ip
@@ -267,6 +225,26 @@ class SecureSwitchController(app_manager.RyuApp):
 		#if we received a packet of unknown protocol, defensively drop it
 		return
 		
+	def send_with_flow(self, dp, msg, in_port, orig_eth_src, orig_eth_dst, out_port, new_eth_src, new_eth_dst):
+		ofproto = dp.ofproto
+		parser = dp.ofproto_parser
+		
+		actions = [
+			parser.OFPActionSetField(eth_dst=new_eth_dst),
+			parser.OFPActionSetField(eth_src=new_eth_src),
+			parser.OFPActionOutput(out_port)
+		]
+		
+		data = None
+		if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+			data = msg.data
+		
+		dp.send_msg(parser.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data))
+		
+		self.add_flow_entry(dp, 1, parser.OFPMatch(eth_type=0x800, in_port=in_port, eth_src=orig_eth_src, eth_dst=orig_eth_dst), actions)
+		
+		return
+				
 	def in_endnet(self, ip_addr):
 		return self.endnet_of(ip_addr) != -1
 				
