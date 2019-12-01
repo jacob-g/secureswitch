@@ -82,13 +82,23 @@ const byte unencrypted_source_last_eth_byte = 4;
 class OversizedPacketException : exception {
 };
 
+/**
+* Perform a exponent mod some number by use of successive squares
+*/
 template<typename T>
 T mod_exponent(T num, T exponent, T mod) {
+    T working_exponent = exponent;
 	T working_power = num;
-	for (T i = 0; i < exponent - 1; i++) {
-		working_power = (working_power * num) % mod;
+	T result = 1;
+	for (T i = 0; i < exponent; i++) {
+		if (working_exponent % 2 == 1) {
+            result = (result * working_power) % mod;
+		}
+
+		working_power = (working_power * working_power) % mod;
+		working_exponent >>= 1;
 	}
-	return working_power;
+	return result;
 }
 
 template<typename T>
