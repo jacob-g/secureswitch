@@ -46,6 +46,7 @@ h22 = n2.newHost(net, 'h22', "100.2.0.3")
 for encryptor in [h1enc, h2enc]:
 	encryptor.cmd('echo "1" > /proc/sys/net/ipv4/icmp_echo_ignore_all')
 	encryptor.cmd('echo 0 | tee /proc/sys/net/ipv4/conf/*/send_redirects') #don't send ICMP redirects
+	encryptor.cmd('echo "0" > /proc/sys/net/ipv4/ip_forward')
 
 net.start()
 CLI(net)

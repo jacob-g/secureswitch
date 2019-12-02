@@ -210,7 +210,7 @@ class SecureSwitchController(app_manager.RyuApp):
 						print " -> src:", mac_src, "dst:", mac_dst
 						
 						#FIXME: this is causing duplicated packets!!!
-						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, pkt_ip.dst, 1, mac_src, self.switch_interchange_mac, True, 3)
+						self.send_with_flow(dp, msg, in_port, mac_src, mac_dst, pkt_ip.dst, 1, "00:01:02:03:04:0%s" % switch_endnet, self.switch_interchange_mac, True, 3)
 						
 						return
 						
