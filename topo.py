@@ -48,8 +48,8 @@ for encryptor in [h1enc, h2enc]:
 	encryptor.cmd('echo 0 | tee /proc/sys/net/ipv4/conf/*/send_redirects') #don't send ICMP redirects
 	encryptor.cmd('echo "0" > /proc/sys/net/ipv4/ip_forward')
 
-h1enc.cmd('sudo middlebox/middlebox -a 47 -b 37 &')
-h2enc.cmd('sudo middlebox/middlebox -a 53 -b 67 &')
+h1enc.cmd('sudo middlebox/middlebox -a 47 -b 37 -f middlebox/pub_keys.txt &')
+h2enc.cmd('sudo middlebox/middlebox -a 53 -b 67 -f middlebox/pub_keys.txt &')
 
 net.start()
 CLI(net)

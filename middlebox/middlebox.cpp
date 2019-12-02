@@ -252,11 +252,14 @@ class PacketPayload {
 		}
 };
 
+const string arg_str = "a:b:f:";
+
 template<typename T>
-PrivateEncryptionKey<T> privateKeyFromArgs(int argc, char** argv) {
+tuple<PrivateEncryptionKey<T>, string> cmdLineArgs(int argc, char** argv) {
     T prime_a = 0, prime_b = 0;
+    string filename;
     int c;
-    while ((c = getopt(argc, argv, "a:b:")) != -1) {
+    while ((c = getopt(argc, argv, arg_str.c_str())) != -1) {
 		switch (c) {
 			case 'a':
 				prime_a = atoi(optarg);
@@ -264,13 +267,26 @@ PrivateEncryptionKey<T> privateKeyFromArgs(int argc, char** argv) {
             case 'b':
                 prime_b = atoi(optarg);
                 break;
-			default:
-                cerr << "Unexpected command line argument: " << (char)c << endl;
-				exit(1);
+            case 'f':
+                filename = optarg;
+                break;
+            default:
+                cerr << "Unknown command line argument: " << (char)c << endl;
+                break;
 		}
 	}
 
-	return PrivateEncryptionKey<T>(prime_a, prime_b);
+	if (prime_a == 0 || prime_b == 0) {
+        cerr << "Missing private key, specify with -a and -b" << endl;
+        exit(1);
+	}
+
+	if (filename.size() == 0) {
+        cerr << "Missing public key filename, specify with -f" << endl;
+        exit(1);
+	}
+
+	return make_tuple(PrivateEncryptionKey<T>(prime_a, prime_b), filename);
 }
 
 template<typename T>
@@ -291,11 +307,13 @@ map<ipaddr_t, PublicEncryptionKey<T> > pubKeysFromFile(const string fileName) {
 }
 
 int main(int argc, char* argv[]) {
-    map<ipaddr_t, PublicEncryptionKey<PacketPayload::encryption_type> > pub_keys = pubKeysFromFile<PacketPayload::encryption_type>("middlebox/pub_keys.txt");
+    tuple<PrivateEncryptionKey<PacketPayload::encryption_type>, string> cmd_args = cmdLineArgs<PacketPayload::encryption_type>(argc, argv);
+
+    map<ipaddr_t, PublicEncryptionKey<PacketPayload::encryption_type> > pub_keys = pubKeysFromFile<PacketPayload::encryption_type>(get<1>(cmd_args));
 
 	cout << "Starting middlebox..." << endl;
 
-	PrivateEncryptionKey<PacketPayload::encryption_type> priv_key = privateKeyFromArgs<PacketPayload::encryption_type>(argc, argv);
+	PrivateEncryptionKey<PacketPayload::encryption_type> priv_key = get<0>(cmd_args);
 
     byte buffer[buffer_length];
 
