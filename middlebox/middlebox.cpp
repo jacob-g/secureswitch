@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <errno.h>
 #include <netinet/ip.h>
 #include <sys/socket.h>
@@ -12,36 +13,13 @@
 #include <sstream>
 #include <exception>
 #include <algorithm>
+#include <set>
+#include <map>
 
 using namespace std;
 
 const int row_size = 4;
 const unsigned long int buffer_length = 65536;
-
-//checksum from https://www.binarytides.com/raw-sockets-c-code-linux/
-unsigned short csum(unsigned short *ptr,int nbytes)
-{
-	register long sum;
-	unsigned short oddbyte;
-	register short answer;
-
-	sum=0;
-	while(nbytes>1) {
-		sum+=*ptr++;
-		nbytes-=2;
-	}
-	if(nbytes==1) {
-		oddbyte=0;
-		*((u_char*)&oddbyte)=*(u_char*)ptr;
-		sum+=oddbyte;
-	}
-
-	sum = (sum >> 16)+(sum & 0xffff);
-	sum = sum + (sum >> 16);
-	answer=(short)~sum;
-
-	return(answer);
-}
 
 template<typename T>
 T mod_inverse(T a, T m)
@@ -264,10 +242,30 @@ class PacketPayload {
 		}
 };
 
-int main() {
+template<typename T>
+PrivateEncryptionKey<T> keyFromArgs(int argc, char** argv) {
+    T prime_a = 0, prime_b = 0;
+    int c;
+    while ((c = getopt(argc, argv, "a:b:")) != -1) {
+		switch (c) {
+			case 'a':
+				prime_a = atoi(optarg);
+				break;
+            case 'b':
+                prime_b = atoi(optarg);
+                break;
+			default:
+				exit(1);
+		}
+	}
+
+	return PrivateEncryptionKey<T>(prime_a, prime_b);
+}
+
+int main(int argc, char* argv[]) {
 	cout << "Starting middlebox..." << endl;
 
-	PrivateEncryptionKey<uint32_t> key(37, 19);
+	PrivateEncryptionKey<uint32_t> key = keyFromArgs<uint32_t>(argc, argv);
 
     byte buffer[buffer_length];
 
