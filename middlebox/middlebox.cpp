@@ -327,8 +327,6 @@ int main(int argc, char* argv[]) {
 			return 1;
 		}
 
-		cout << "Packet in of size " << packet_size << endl;
-
 		if (packet_size >= sizeof(struct ethhdr) + sizeof(struct iphdr)) {
             struct ethhdr* eth_header = (struct ethhdr*)buffer;
             const byte last_eth_src_byte = eth_header->h_source[5];
@@ -341,9 +339,12 @@ int main(int argc, char* argv[]) {
                 switch (last_eth_src_byte) {
                     case unencrypted_source_last_eth_byte:
                         {
-                            PacketPayload encrypted = payload.encrypt(pub_keys[ip_packet->daddr]); //TODO: replace this with the public key for the destination IP
-                            cout << pub_keys[ip_packet->daddr].pub_n << endl;
-                            encrypted.send(send_sock);
+                            //encrypt he packet if we have a registered public key for the destination (and if not, drop it)
+                            PublicEncryptionKey<PacketPayload::encryption_type> pub_key = pub_keys[ip_packet->daddr];
+                            if (pub_key.pub_n > 0) {
+                                PacketPayload encrypted = payload.encrypt(pub_key);
+                                encrypted.send(send_sock);
+                            }
                         }
                         break;
                     case encrypted_source_last_eth_byte:
