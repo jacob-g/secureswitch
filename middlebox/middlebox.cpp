@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <set>
 #include <map>
+#include <tuple>
 
 using namespace std;
 
@@ -243,10 +244,10 @@ class PacketPayload {
 };
 
 template<typename T>
-PrivateEncryptionKey<T> keyFromArgs(int argc, char** argv) {
-    T prime_a = 0, prime_b = 0;
+tuple<PrivateEncryptionKey<T>, PublicEncryptionKey<T>> keysFromArgs(int argc, char** argv) {
+    T prime_a = 0, prime_b = 0, pub_e = 0, pub_n = 0;
     int c;
-    while ((c = getopt(argc, argv, "a:b:")) != -1) {
+    while ((c = getopt(argc, argv, "a:b:e:n:")) != -1) {
 		switch (c) {
 			case 'a':
 				prime_a = atoi(optarg);
@@ -254,18 +255,25 @@ PrivateEncryptionKey<T> keyFromArgs(int argc, char** argv) {
             case 'b':
                 prime_b = atoi(optarg);
                 break;
+            case 'e':
+                pub_e = atoi(optarg);
+                break;
+            case 'n':
+                pub_n = atoi(optarg);
+                break;
 			default:
+                cerr << "Unexpected command line argument: " << (char)c << endl;
 				exit(1);
 		}
 	}
 
-	return PrivateEncryptionKey<T>(prime_a, prime_b);
+	return make_tuple(PrivateEncryptionKey<T>(prime_a, prime_b), PublicEncryptionKey<T>(pub_e, pub_n));
 }
 
 int main(int argc, char* argv[]) {
 	cout << "Starting middlebox..." << endl;
 
-	PrivateEncryptionKey<uint32_t> key = keyFromArgs<uint32_t>(argc, argv);
+	tuple<PrivateEncryptionKey<uint32_t>, PublicEncryptionKey<uint32_t> > keys = keysFromArgs<uint32_t>(argc, argv);
 
     byte buffer[buffer_length];
 
@@ -309,13 +317,13 @@ int main(int argc, char* argv[]) {
                 switch (last_eth_src_byte) {
                     case unencrypted_source_last_eth_byte:
                         {
-                            PacketPayload encrypted = payload.encrypt(key.pub_key);
+                            PacketPayload encrypted = payload.encrypt(get<1>(keys));
                             encrypted.send(send_sock);
                         }
                         break;
                     case encrypted_source_last_eth_byte:
                         {
-                            PacketPayload decrypted = payload.decrypt(key);
+                            PacketPayload decrypted = payload.decrypt(get<0>(keys));
                             decrypted.send(send_sock);
                         }
                         break;
