@@ -33,11 +33,11 @@ n1 = Endnet(net, 1)
 n2 = Endnet(net, 2)
 net.addLink(n1.switch, n2.switch)
 
-h1enc = n1.newHost(net, 'h1enc', '100.1.0.1')
+h1enc = n1.newHost(net, 'h1enc', '100.1.0.1/8')
 h11 = n1.newHost(net, 'h11', "100.1.0.2")
 h12 = n1.newHost(net, 'h12', "100.1.0.3")
 
-h2enc = n2.newHost(net, 'h2enc', "100.2.0.1")
+h2enc = n2.newHost(net, 'h2enc', "100.2.0.1/8")
 h21 = n2.newHost(net, 'h21', "100.2.0.2")
 h22 = n2.newHost(net, 'h22', "100.2.0.3")
 
