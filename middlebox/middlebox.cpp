@@ -90,7 +90,7 @@ T mod_exponent(T num, T exponent, T mod) {
     T working_exponent = exponent;
 	T working_power = num;
 	T result = 1;
-	for (T i = 0; i < exponent; i++) {
+	while (working_exponent > 0) {
 		if (working_exponent % 2 == 1) {
             result = (result * working_power) % mod;
 		}
