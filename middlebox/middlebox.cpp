@@ -16,6 +16,7 @@
 #include <set>
 #include <map>
 #include <tuple>
+#include <fstream>
 
 using namespace std;
 
@@ -89,8 +90,16 @@ class PublicEncryptionKey {
 			pub_e(in_e),
 			pub_n(in_n) {};
 
+        PublicEncryptionKey() : PublicEncryptionKey(0, 0) {};
+
+        PublicEncryptionKey(const PublicEncryptionKey& other) : PublicEncryptionKey(other.pub_e, other.pub_n) {};
+
 		T encrypt(byte unencrypted) const {
 			return mod_exponent<T>(unencrypted, pub_e, pub_n);
+		}
+
+		PublicEncryptionKey operator=(const PublicEncryptionKey& other) {
+            return PublicEncryptionKey(other.pub_e, other.pub_n);
 		}
 };
 
@@ -244,10 +253,10 @@ class PacketPayload {
 };
 
 template<typename T>
-tuple<PrivateEncryptionKey<T>, PublicEncryptionKey<T>> keysFromArgs(int argc, char** argv) {
-    T prime_a = 0, prime_b = 0, pub_e = 0, pub_n = 0;
+PrivateEncryptionKey<T> privateKeyFromArgs(int argc, char** argv) {
+    T prime_a = 0, prime_b = 0;
     int c;
-    while ((c = getopt(argc, argv, "a:b:e:n:")) != -1) {
+    while ((c = getopt(argc, argv, "a:b:")) != -1) {
 		switch (c) {
 			case 'a':
 				prime_a = atoi(optarg);
@@ -255,25 +264,38 @@ tuple<PrivateEncryptionKey<T>, PublicEncryptionKey<T>> keysFromArgs(int argc, ch
             case 'b':
                 prime_b = atoi(optarg);
                 break;
-            case 'e':
-                pub_e = atoi(optarg);
-                break;
-            case 'n':
-                pub_n = atoi(optarg);
-                break;
 			default:
                 cerr << "Unexpected command line argument: " << (char)c << endl;
 				exit(1);
 		}
 	}
 
-	return make_tuple(PrivateEncryptionKey<T>(prime_a, prime_b), PublicEncryptionKey<T>(pub_e, pub_n));
+	return PrivateEncryptionKey<T>(prime_a, prime_b);
+}
+
+template<typename T>
+map<ipaddr_t, PublicEncryptionKey<T> > pubKeysFromFile(const string fileName) {
+    map<ipaddr_t, PublicEncryptionKey<T> > result;
+
+    ifstream file(fileName);
+    string ip_str;
+    T e, n;
+    while (file >> ip_str, file >> e, file >> n) {
+        PublicEncryptionKey<T> key(e, n);
+        ipaddr_t ip = inet_addr(ip_str.c_str());
+        result.insert(typename map<ipaddr_t, PublicEncryptionKey<T> >::value_type(ip, key));
+    }
+    file.close();
+
+    return result;
 }
 
 int main(int argc, char* argv[]) {
+    map<ipaddr_t, PublicEncryptionKey<PacketPayload::encryption_type> > pub_keys = pubKeysFromFile<PacketPayload::encryption_type>("middlebox/pub_keys.txt");
+
 	cout << "Starting middlebox..." << endl;
 
-	tuple<PrivateEncryptionKey<uint32_t>, PublicEncryptionKey<uint32_t> > keys = keysFromArgs<uint32_t>(argc, argv);
+	PrivateEncryptionKey<PacketPayload::encryption_type> priv_key = privateKeyFromArgs<PacketPayload::encryption_type>(argc, argv);
 
     byte buffer[buffer_length];
 
@@ -305,6 +327,8 @@ int main(int argc, char* argv[]) {
 			return 1;
 		}
 
+		cout << "Packet in of size " << packet_size << endl;
+
 		if (packet_size >= sizeof(struct ethhdr) + sizeof(struct iphdr)) {
             struct ethhdr* eth_header = (struct ethhdr*)buffer;
             const byte last_eth_src_byte = eth_header->h_source[5];
@@ -317,13 +341,14 @@ int main(int argc, char* argv[]) {
                 switch (last_eth_src_byte) {
                     case unencrypted_source_last_eth_byte:
                         {
-                            PacketPayload encrypted = payload.encrypt(get<1>(keys));
+                            PacketPayload encrypted = payload.encrypt(pub_keys[ip_packet->daddr]); //TODO: replace this with the public key for the destination IP
+                            cout << pub_keys[ip_packet->daddr].pub_n << endl;
                             encrypted.send(send_sock);
                         }
                         break;
                     case encrypted_source_last_eth_byte:
                         {
-                            PacketPayload decrypted = payload.decrypt(get<0>(keys));
+                            PacketPayload decrypted = payload.decrypt(priv_key);
                             decrypted.send(send_sock);
                         }
                         break;
