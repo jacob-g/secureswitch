@@ -84,6 +84,7 @@ class EncryptablePacketPayload : public PacketPayload {
 public:
 	EncryptablePacketPayload(const struct iphdr* ip_packet, const uint16_t length) : PacketPayload(ip_packet, length) {};
 
+	typedef byte decryption_type;
 	typedef uint32_t encryption_type;
 
 	/**
@@ -91,7 +92,7 @@ public:
 	*/
 	EncryptablePacketPayload encrypt(const PublicEncryptionKey<encryption_type>& key) const {
 		//create a new IP header with a bunch of random junk, with only the length (IHL/tot_len) and destination fields being correct
-		const uint64_t tot_len = rowsToBytes(default_ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier;
+		const uint64_t tot_len = rowsToBytes(default_ihl) + (rowsToBytes(header.ihl) + payload_length) * sizeof(encryption_type) / sizeof(decryption_type);
 
 		struct iphdr new_header;
 		new_header.ihl = default_ihl;
@@ -113,13 +114,13 @@ public:
 
 		//TODO: join these foreach loops
 		//copy and encrypt the header (the encrypted version may use different unit sizes for each source bytes, but since dst_cursor is of type encryption_type, that is already taken care of)
-		for (byte* src = (byte*)&header; src < (byte*)&header + rowsToBytes(header.ihl); src++) {
+		for (decryption_type* src = (decryption_type*)&header; src < (decryption_type*)((byte*)&header + rowsToBytes(header.ihl)); src++) {
 			*dst_cursor = key.encrypt(*src);
 			dst_cursor++;
 		}
 
 		//also copy and encrypt the payload
-		for (byte* src = const_cast<byte*>(payload); src < payload + payload_length; src++) {
+		for (decryption_type* src = const_cast<decryption_type*>(payload); src < (decryption_type*)(payload + payload_length); src++) {
 			*dst_cursor = key.encrypt(*src);
 			dst_cursor++;
 		}
@@ -134,7 +135,7 @@ public:
 
 		//copy the encrypted packet to the buffer that will represent the unencrypted packet
 		//the source is of the encryption type, which may be a different length than a single byte, but the pointer operations take care of that
-		byte* dst = buffer;
+		decryption_type* dst = (decryption_type*)buffer;
 		for (encryption_type* src = (encryption_type*)payload; (byte*)src < payload + payload_length; src++) {
 			*dst = key.decrypt(*src);
 			dst++;

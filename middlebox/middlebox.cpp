@@ -25,7 +25,7 @@ using namespace std;
 */
 template<typename T>
 tuple<PrivateEncryptionKey<T>, string> cmdLineArgs(int argc, char** argv) {
-    const string arg_str = "a:b:f:";
+	const string arg_str = "a:b:f:";
 
 	T prime_a = 0, prime_b = 0;
 	string filename;
@@ -86,19 +86,19 @@ typedef enum{ENCRYPTED, UNENCRYPTED, UNKNOWN} encryption_state;
 * Find out whether a packet is encrypted or unencrypted based on the metadata in the ethernet header
 */
 encryption_state encryption_state_of(ethhdr* eth_header) {
-    const byte encrypted_source_last_eth_byte = 3;
-    const byte unencrypted_source_last_eth_byte = 4;
+	const byte encrypted_source_last_eth_byte = 3;
+	const byte unencrypted_source_last_eth_byte = 4;
 
-    const byte last_eth_src_byte = eth_header->h_source[5];
+	const byte last_eth_src_byte = eth_header->h_source[5];
 
-    switch (last_eth_src_byte) {
-    case unencrypted_source_last_eth_byte:
-        return UNENCRYPTED;
-    case encrypted_source_last_eth_byte:
-        return ENCRYPTED;
-    default:
-        return UNKNOWN;
-    }
+	switch (last_eth_src_byte) {
+	case unencrypted_source_last_eth_byte:
+		return UNENCRYPTED;
+	case encrypted_source_last_eth_byte:
+		return ENCRYPTED;
+	default:
+		return UNKNOWN;
+	}
 }
 
 int main(int argc, char* argv[]) {
@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
 
 	PrivateEncryptionKey<EncryptablePacketPayload::encryption_type> priv_key = get<0>(cmd_args); //get the private key from the command line arguments
 
-    cout << "Starting middlebox..." << endl;
+	cout << "Starting middlebox..." << endl;
 
 	byte buffer[buffer_length];
 
@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
 
 	// open the sockets
 	RawDataLinkSocket in_sock = RawDataLinkSocket();
-    RawIPSocket out_sock = RawIPSocket();
+	RawIPSocket out_sock = RawIPSocket();
 
 
 	while (true) {
