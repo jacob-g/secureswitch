@@ -39,10 +39,14 @@ net.addLink(n1.switch, n2.switch)
 h1enc = n1.newHost(net, 'h1enc', '100.1.0.1/8')
 h11 = n1.newHost(net, 'h11', "100.1.0.2")
 h12 = n1.newHost(net, 'h12', "100.1.0.3")
+h13 = n1.newHost(net, 'h13', "100.1.0.4")
+h14 = n1.newHost(net, 'h14', "100.1.0.5")
 
 h2enc = n2.newHost(net, 'h2enc', "100.2.0.1/8")
 h21 = n2.newHost(net, 'h21', "100.2.0.2")
 h22 = n2.newHost(net, 'h22', "100.2.0.3")
+h23 = n2.newHost(net, 'h23', "100.2.0.4")
+h24 = n2.newHost(net, 'h24', "100.2.0.5")
 
 #for each encryptor, disable any ICMP-related behavior and IP forwarding
 for encryptor in [h1enc, h2enc]:

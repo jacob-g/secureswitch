@@ -22,8 +22,8 @@ class SecureSwitchController(app_manager.RyuApp):
 	
 	#the IP addresses of devices that belong to each end network
 	end_nets = {
-		1: ["100.1.0.1", "100.1.0.2", "100.1.0.3"],
-		2: ["100.2.0.1", "100.2.0.2", "100.2.0.3"]
+		1: ["100.1.0.1", "100.1.0.2", "100.1.0.3", "100.1.0.4", "100.1.0.5"],
+		2: ["100.2.0.1", "100.2.0.2", "100.2.0.3", "100.2.0.4", "100.2.0.5"]
 	}
 	
 	#the IP address of the encryptor on each endnet
