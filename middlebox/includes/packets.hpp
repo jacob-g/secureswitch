@@ -43,14 +43,16 @@ class PacketPayload {
 		* Send this packet on a given socket
 		*/
 		bool send(RawIPSocket& sock) const {
-			byte buffer[buffer_length];
+			const uint16_t packet_length = ntohs(header.tot_len);
+
+			byte buffer[packet_length];
 
 			const unsigned int header_length = rowsToBytes(header.ihl);
 
 			memcpy(buffer, &header, header_length);
 			memcpy(buffer + header_length, payload, payload_length);
 
-			return sock.send_to(header.daddr, buffer, ntohs(header.tot_len));
+			return sock.send_to(header.daddr, buffer, packet_length);
 		}
 
 		operator std::string() const {
@@ -107,27 +109,24 @@ public:
 			throw OversizedPacketException();
 		}
 
-		byte buffer[buffer_length];
+		//put the origin all in one contiguous block of memory
+		byte origin[rowsToBytes(header.ihl) + payload_length];
+		memcpy(origin, &header, rowsToBytes(header.ihl));
+		memcpy(origin + rowsToBytes(header.ihl), payload, payload_length);
+
+		//make a buffer where the destination will reside
+		byte buffer[tot_len];
 		memcpy(buffer, &new_header, rowsToBytes(new_header.ihl)); //copy the new header to the beginning of the packet
 
 		encryption_type* dst_cursor = (encryption_type*)(buffer + rowsToBytes(new_header.ihl));
 
-		//TODO: join these foreach loops
 		//copy and encrypt the header (the encrypted version may use different unit sizes for each source bytes, but since dst_cursor is of type encryption_type, that is already taken care of)
-		for (decryption_type* src = (decryption_type*)&header; src < (decryption_type*)((byte*)&header + rowsToBytes(header.ihl)); src++) {
+		for (decryption_type* src = origin; src < (decryption_type*)(origin + rowsToBytes(header.ihl) + payload_length); src++) {
 			*dst_cursor = key.encrypt(*src);
 			dst_cursor++;
 		}
 
-		//also copy and encrypt the payload
-		for (decryption_type* src = const_cast<decryption_type*>(payload); src < (decryption_type*)(payload + payload_length); src++) {
-			*dst_cursor = key.encrypt(*src);
-			dst_cursor++;
-		}
-
-		EncryptablePacketPayload encrypted((struct iphdr*)buffer, ntohs(new_header.tot_len));
-
-		return encrypted;
+		return EncryptablePacketPayload((struct iphdr*)buffer, ntohs(new_header.tot_len));
 	}
 
 	PacketPayload decrypt(const PrivateEncryptionKey<decryption_type, encryption_type> key) const {
@@ -143,9 +142,7 @@ public:
 
 		struct iphdr old_header = *((struct iphdr *) buffer);
 
-		PacketPayload decrypted((struct iphdr*)buffer, ntohs(old_header.tot_len));
-
-		return decrypted;
+		return PacketPayload((struct iphdr*)buffer, ntohs(old_header.tot_len));
 	}
 };
 
