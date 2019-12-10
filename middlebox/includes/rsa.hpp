@@ -1,4 +1,3 @@
-#include "types.hpp"
 #include <algorithm>
 
 #ifndef RSA_INC
@@ -67,7 +66,7 @@ class PublicEncryptionKey {
 		PublicEncryptionKey(const PublicEncryptionKey& other) : PublicEncryptionKey(other.pub_e, other.pub_n) {};
 
 		/**
-		* Encrypt a byte with this public key
+		* Encrypt a value with this public key
 		*/
 		E encrypt(U unencrypted) const {
 			return mod_exponent<E>(unencrypted, pub_e, pub_n);
