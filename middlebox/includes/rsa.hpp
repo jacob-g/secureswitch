@@ -76,6 +76,10 @@ class PublicEncryptionKey {
 		PublicEncryptionKey operator=(const PublicEncryptionKey& other) {
 			return PublicEncryptionKey(other.pub_e, other.pub_n);
 		}
+
+		inline operator bool() const {
+            return pub_n > 0;
+		}
 };
 
 /**

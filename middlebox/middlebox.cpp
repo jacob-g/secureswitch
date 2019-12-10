@@ -20,13 +20,13 @@
 
 using namespace std;
 
-const byte encrypted_source_last_eth_byte = 3;
-const byte unencrypted_source_last_eth_byte = 4;
-
-const string arg_str = "a:b:f:";
-
+/**
+* Read out useful metadata the command line arguments
+*/
 template<typename T>
 tuple<PrivateEncryptionKey<T>, string> cmdLineArgs(int argc, char** argv) {
+    const string arg_str = "a:b:f:";
+
 	T prime_a = 0, prime_b = 0;
 	string filename;
 	int c;
@@ -60,6 +60,9 @@ tuple<PrivateEncryptionKey<T>, string> cmdLineArgs(int argc, char** argv) {
 	return make_tuple(PrivateEncryptionKey<T>(prime_a, prime_b), filename);
 }
 
+/**
+* Read the public keys in a file
+*/
 template<typename T>
 map<ipaddr_t, PublicEncryptionKey<T> > pubKeysFromFile(const string fileName) {
 	map<ipaddr_t, PublicEncryptionKey<T> > result;
@@ -77,22 +80,41 @@ map<ipaddr_t, PublicEncryptionKey<T> > pubKeysFromFile(const string fileName) {
 	return result;
 }
 
+typedef enum{ENCRYPTED, UNENCRYPTED, UNKNOWN} encryption_state;
+
+/**
+* Find out whether a packet is encrypted or unencrypted based on the metadata in the ethernet header
+*/
+encryption_state encryption_state_of(ethhdr* eth_header) {
+    const byte encrypted_source_last_eth_byte = 3;
+    const byte unencrypted_source_last_eth_byte = 4;
+
+    const byte last_eth_src_byte = eth_header->h_source[5];
+
+    switch (last_eth_src_byte) {
+    case unencrypted_source_last_eth_byte:
+        return UNENCRYPTED;
+    case encrypted_source_last_eth_byte:
+        return ENCRYPTED;
+    default:
+        return UNKNOWN;
+    }
+}
+
 int main(int argc, char* argv[]) {
-	tuple<PrivateEncryptionKey<EncryptablePacketPayload::encryption_type>, string> cmd_args = cmdLineArgs<EncryptablePacketPayload::encryption_type>(argc, argv);
+	tuple<PrivateEncryptionKey<EncryptablePacketPayload::encryption_type>, string> cmd_args = cmdLineArgs<EncryptablePacketPayload::encryption_type>(argc, argv); //read the command line arguments
 
-	map<ipaddr_t, PublicEncryptionKey<EncryptablePacketPayload::encryption_type> > pub_keys = pubKeysFromFile<EncryptablePacketPayload::encryption_type>(get<1>(cmd_args));
+	map<ipaddr_t, PublicEncryptionKey<EncryptablePacketPayload::encryption_type> > pub_keys = pubKeysFromFile<EncryptablePacketPayload::encryption_type>(get<1>(cmd_args)); //read the public key file given in the command line args
 
-	cout << "Starting middlebox..." << endl;
+	PrivateEncryptionKey<EncryptablePacketPayload::encryption_type> priv_key = get<0>(cmd_args); //get the private key from the command line arguments
 
-	PrivateEncryptionKey<EncryptablePacketPayload::encryption_type> priv_key = get<0>(cmd_args);
+    cout << "Starting middlebox..." << endl;
 
 	byte buffer[buffer_length];
 
 	int packet_size;
 
-	// Allocate string buffer to hold incoming packet data
-	//unsigned char *buffer = (unsigned char *)malloc(buffer_length);
-	// Open the raw socket
+	// open the sockets
 	RawDataLinkSocket in_sock = RawDataLinkSocket();
     RawIPSocket out_sock = RawIPSocket();
 
@@ -101,33 +123,33 @@ int main(int argc, char* argv[]) {
 		// recvfrom is used to read data from a socket
 		packet_size = in_sock.receive_any(buffer, buffer_length);
 
-		if (packet_size >= sizeof(struct ethhdr) + sizeof(struct iphdr)) {
-			struct ethhdr* eth_header = (struct ethhdr*)buffer;
-			const byte last_eth_src_byte = eth_header->h_source[5];
-
-			struct iphdr *ip_packet = (struct iphdr *)(buffer + sizeof(struct ethhdr));
+		if (packet_size >= sizeof(struct ethhdr) + sizeof(struct iphdr)) { //make sure that the packet at least has an ethernet and IP header
+			struct ethhdr* eth_header = (struct ethhdr*)buffer; //extract the ethernet header
+			struct iphdr *ip_packet = (struct iphdr *)(buffer + sizeof(struct ethhdr)); //extract the IP header after the ethernet header
 
 			try {
-				EncryptablePacketPayload payload(ip_packet, packet_size - - sizeof(struct ethhdr) - rowsToBytes(ip_packet->ihl));
+				EncryptablePacketPayload payload(ip_packet, packet_size - - sizeof(struct ethhdr) - rowsToBytes(ip_packet->ihl)); //convert the packet into a usable type
 
-				switch (last_eth_src_byte) {
-					case unencrypted_source_last_eth_byte:
+				switch (encryption_state_of(eth_header)) {
+					case UNENCRYPTED:
 						{
 							//encrypt he packet if we have a registered public key for the destination (and if not, drop it)
 							PublicEncryptionKey<EncryptablePacketPayload::encryption_type> pub_key = pub_keys[ip_packet->daddr];
-							if (pub_key.pub_n > 0) {
+							if (pub_key) {
 								EncryptablePacketPayload encrypted = payload.encrypt(pub_key);
 								encrypted.send(out_sock);
 							}
 						}
 						break;
-					case encrypted_source_last_eth_byte:
+					case ENCRYPTED:
 						{
+						    //decrypt an encrypted packet
 							PacketPayload decrypted = payload.decrypt(priv_key);
 							decrypted.send(out_sock);
 						}
 						break;
 					default:
+					    //drop unknown packets
 						break;
 				}
 
