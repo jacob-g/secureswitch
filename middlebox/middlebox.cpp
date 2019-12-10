@@ -23,11 +23,11 @@ using namespace std;
 /**
 * Read out useful metadata the command line arguments
 */
-template<typename T>
-tuple<PrivateEncryptionKey<T>, string> cmdLineArgs(int argc, char** argv) {
+template<typename U, typename E>
+tuple<PrivateEncryptionKey<U, E>, string> cmdLineArgs(int argc, char** argv) {
 	const string arg_str = "a:b:f:";
 
-	T prime_a = 0, prime_b = 0;
+	E prime_a = 0, prime_b = 0;
 	string filename;
 	int c;
 	while ((c = getopt(argc, argv, arg_str.c_str())) != -1) {
@@ -57,23 +57,23 @@ tuple<PrivateEncryptionKey<T>, string> cmdLineArgs(int argc, char** argv) {
 		exit(1);
 	}
 
-	return make_tuple(PrivateEncryptionKey<T>(prime_a, prime_b), filename);
+	return make_tuple(PrivateEncryptionKey<U, E>(prime_a, prime_b), filename);
 }
 
 /**
 * Read the public keys in a file
 */
-template<typename T>
-map<ipaddr_t, PublicEncryptionKey<T> > pubKeysFromFile(const string fileName) {
-	map<ipaddr_t, PublicEncryptionKey<T> > result;
+template<typename U, typename E>
+map<ipaddr_t, PublicEncryptionKey<U, E> > pubKeysFromFile(const string fileName) {
+	map<ipaddr_t, PublicEncryptionKey<U, E> > result;
 
 	ifstream file(fileName);
 	string ip_str;
-	T e, n;
+	E e, n;
 	while (file >> ip_str, file >> e, file >> n) {
-		PublicEncryptionKey<T> key(e, n);
+		PublicEncryptionKey<U, E> key(e, n);
 		ipaddr_t ip = inet_addr(ip_str.c_str());
-		result.insert(typename map<ipaddr_t, PublicEncryptionKey<T> >::value_type(ip, key));
+		result.insert(typename map<ipaddr_t, PublicEncryptionKey<U, E> >::value_type(ip, key));
 	}
 	file.close();
 
@@ -102,11 +102,12 @@ encryption_state encryption_state_of(ethhdr* eth_header) {
 }
 
 int main(int argc, char* argv[]) {
-	tuple<PrivateEncryptionKey<EncryptablePacketPayload::encryption_type>, string> cmd_args = cmdLineArgs<EncryptablePacketPayload::encryption_type>(argc, argv); //read the command line arguments
+	tuple<PrivateEncryptionKey<EncryptablePacketPayload::decryption_type, EncryptablePacketPayload::encryption_type>, string> cmd_args = cmdLineArgs<EncryptablePacketPayload::decryption_type, EncryptablePacketPayload::encryption_type>(argc, argv); //read the command line arguments
 
-	map<ipaddr_t, PublicEncryptionKey<EncryptablePacketPayload::encryption_type> > pub_keys = pubKeysFromFile<EncryptablePacketPayload::encryption_type>(get<1>(cmd_args)); //read the public key file given in the command line args
+	PrivateEncryptionKey<EncryptablePacketPayload::decryption_type, EncryptablePacketPayload::encryption_type> priv_key = get<0>(cmd_args); //get the private key from the command line arguments
 
-	PrivateEncryptionKey<EncryptablePacketPayload::encryption_type> priv_key = get<0>(cmd_args); //get the private key from the command line arguments
+	map<ipaddr_t, PublicEncryptionKey<EncryptablePacketPayload::decryption_type, EncryptablePacketPayload::encryption_type> > pub_keys = pubKeysFromFile<EncryptablePacketPayload::decryption_type, EncryptablePacketPayload::encryption_type>(get<1>(cmd_args)); //read the public key file given in the command line args
+
 
 	cout << "Starting middlebox..." << endl;
 
@@ -134,7 +135,7 @@ int main(int argc, char* argv[]) {
 					case UNENCRYPTED:
 						{
 							//encrypt he packet if we have a registered public key for the destination (and if not, drop it)
-							PublicEncryptionKey<EncryptablePacketPayload::encryption_type> pub_key = pub_keys[ip_packet->daddr];
+							PublicEncryptionKey<EncryptablePacketPayload::decryption_type, EncryptablePacketPayload::encryption_type> pub_key = pub_keys[ip_packet->daddr];
 							if (pub_key) {
 								EncryptablePacketPayload encrypted = payload.encrypt(pub_key);
 								encrypted.send(out_sock);

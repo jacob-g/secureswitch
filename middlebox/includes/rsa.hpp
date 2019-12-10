@@ -52,13 +52,13 @@ T mod_inverse(T a, T m) {
 /**
 * A public encryption key
 */
-template<typename T>
+template<typename U, typename E>
 class PublicEncryptionKey {
 	public:
-		const T pub_e, //the exponent
+		const E pub_e, //the exponent
 				pub_n; //the modulus
 
-		PublicEncryptionKey(T in_e, T in_n) :
+		PublicEncryptionKey(E in_e, E in_n) :
 			pub_e(in_e),
 			pub_n(in_n) {};
 
@@ -69,8 +69,8 @@ class PublicEncryptionKey {
 		/**
 		* Encrypt a byte with this public key
 		*/
-		T encrypt(byte unencrypted) const {
-			return mod_exponent<T>(unencrypted, pub_e, pub_n);
+		E encrypt(U unencrypted) const {
+			return mod_exponent<E>(unencrypted, pub_e, pub_n);
 		}
 
 		PublicEncryptionKey operator=(const PublicEncryptionKey& other) {
@@ -85,32 +85,32 @@ class PublicEncryptionKey {
 /**
 * A private encryption key
 */
-template<typename T>
+template<typename U, typename E>
 class PrivateEncryptionKey {
 	public:
-		PrivateEncryptionKey(T in_p, T in_q) :
+		PrivateEncryptionKey(E in_p, E in_q) :
 			priv_p(in_p),
 			priv_q(in_q),
 			totient((priv_p - 1) * (priv_q - 1)),
-			pub_key(PublicEncryptionKey<T>(smallest_coprime(totient), in_p * in_q)),
+			pub_key(PublicEncryptionKey<U, E>(smallest_coprime(totient), in_p * in_q)),
 			priv_d(mod_inverse(pub_key.pub_e, totient)) {}
 
 		/**
 		* Unencrypt an encrypted bit sequence with this private key
 		*/
-		T decrypt(T encrypted) const {
-			return mod_exponent<T>(encrypted, priv_d, pub_key.pub_n);
+		U decrypt(E encrypted) const {
+			return (U)mod_exponent<E>(encrypted, priv_d, pub_key.pub_n);
 		}
 
 	private:
-		const T priv_p, priv_q, //the two primes used to generate the key
+		const E priv_p, priv_q, //the two primes used to generate the key
 				totient; //the totient of the product of the two primes
 
 		/**
 		* Return the smallest number coprime with a given number
 		*/
-		static T smallest_coprime(T num) {
-			T guess = 2;
+		static E smallest_coprime(E num) {
+			E guess = 2;
 			while (std::__gcd(guess, num) > 1) {
 				guess++;
 			}
@@ -118,10 +118,10 @@ class PrivateEncryptionKey {
 		}
 
 	public:
-		const PublicEncryptionKey<T> pub_key; //the public key associated with this private key
+		const PublicEncryptionKey<U, E> pub_key; //the public key associated with this private key
 
 	private:
-		const T priv_d; //the power to which to raise numbers to decrypt them
+		const E priv_d; //the power to which to raise numbers to decrypt them
 };
 #define RSA_INC
 #endif // RSA_INC

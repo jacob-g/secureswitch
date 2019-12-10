@@ -90,7 +90,7 @@ public:
 	/**
 	* Encrypt this payload with a given public key
 	*/
-	EncryptablePacketPayload encrypt(const PublicEncryptionKey<encryption_type>& key) const {
+	EncryptablePacketPayload encrypt(const PublicEncryptionKey<decryption_type, encryption_type>& key) const {
 		//create a new IP header with a bunch of random junk, with only the length (IHL/tot_len) and destination fields being correct
 		const uint64_t tot_len = rowsToBytes(default_ihl) + (rowsToBytes(header.ihl) + payload_length) * sizeof(encryption_type) / sizeof(decryption_type);
 
@@ -130,7 +130,7 @@ public:
 		return encrypted;
 	}
 
-	PacketPayload decrypt(const PrivateEncryptionKey<encryption_type> key) const {
+	PacketPayload decrypt(const PrivateEncryptionKey<decryption_type, encryption_type> key) const {
 		byte buffer[buffer_length];
 
 		//copy the encrypted packet to the buffer that will represent the unencrypted packet
