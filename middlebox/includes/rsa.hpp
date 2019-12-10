@@ -6,9 +6,9 @@
 */
 template<typename T>
 T mod_exponent(T num, T exponent, T mod) {
-	T working_exponent = exponent;
-	T working_power = num;
-	T result = 1;
+	T working_exponent = exponent; //the exponent we still have to take the working power to
+	T working_power = num; //the square that we are currently working with
+	T result = 1; //the output power we have so far
 
 	while (working_exponent > 0) {
 		if (working_exponent % 2 == 1) { //if the least-significant digit is zero, multiply by the working power, since this exponent of two is in the final result
