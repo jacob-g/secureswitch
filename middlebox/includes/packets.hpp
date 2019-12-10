@@ -147,8 +147,6 @@ public:
 
 		return decrypted;
 	}
-private:
-	const static unsigned int size_multiplier = sizeof(encryption_type);
 };
 
 #define PACKETS_INC
