@@ -3,6 +3,7 @@
 #include <netinet/ip.h>
 #include <arpa/inet.h>
 #include <string.h>
+#include <iostream>
 #include "sockets.hpp"
 
 #ifndef PACKETS_INC
@@ -109,8 +110,10 @@ public:
 			throw OversizedPacketException();
 		}
 
+		const unsigned int origin_length = rowsToBytes(header.ihl) + payload_length + sizeof(decryption_type) - 1;
+
 		//put the origin all in one contiguous block of memory
-		byte origin[rowsToBytes(header.ihl) + payload_length];
+		byte origin[origin_length];
 		memcpy(origin, &header, rowsToBytes(header.ihl));
 		memcpy(origin + rowsToBytes(header.ihl), payload, payload_length);
 
@@ -121,12 +124,12 @@ public:
 		encryption_type* dst_cursor = (encryption_type*)(buffer + rowsToBytes(new_header.ihl));
 
 		//copy and encrypt the header (the encrypted version may use different unit sizes for each source bytes, but since dst_cursor is of type encryption_type, that is already taken care of)
-		for (decryption_type* src = origin; src < (decryption_type*)(origin + rowsToBytes(header.ihl) + payload_length); src++) {
+		for (decryption_type* src = (decryption_type*)origin; src < (decryption_type*)(origin + origin_length); src++) {
 			*dst_cursor = key.encrypt(*src);
 			dst_cursor++;
 		}
 
-		return EncryptablePacketPayload((struct iphdr*)buffer, ntohs(new_header.tot_len));
+		return EncryptablePacketPayload((struct iphdr*)buffer, tot_len);
 	}
 
 	PacketPayload decrypt(const PrivateEncryptionKey<decryption_type, encryption_type> key) const {
@@ -141,6 +144,8 @@ public:
 		}
 
 		struct iphdr old_header = *((struct iphdr *) buffer);
+
+		std::cout << "Send length: " << old_header.tot_len << std::endl;
 
 		return PacketPayload((struct iphdr*)buffer, ntohs(old_header.tot_len));
 	}
