@@ -23,6 +23,9 @@ using namespace std;
 const int row_size = 4;
 const unsigned long int buffer_length = 65536;
 
+/**
+* Calculate the mod inverse of a number given a modulus
+*/
 template<typename T>
 T mod_inverse(T a, T m)
 {
@@ -47,14 +50,16 @@ T mod_inverse(T a, T m)
 	return top_right < 0 ? top_right + m : top_right;
 }
 
-
+/**
+* Convert rows in an IP packet to bytes
+*/
 inline unsigned int rowsToBytes(unsigned int rows) {
 	return rows * row_size;
 }
 
-typedef uint8_t byte;
-typedef uint32_t ipaddr_t;
-typedef int sock_t;
+typedef uint8_t byte; //a byte
+typedef uint32_t ipaddr_t; //an IP address
+typedef int sock_t; //a socket
 
 const byte encrypted_source_last_eth_byte = 3;
 const byte unencrypted_source_last_eth_byte = 4;
@@ -81,6 +86,9 @@ T mod_exponent(T num, T exponent, T mod) {
 	return result;
 }
 
+/**
+* A public encryption key
+*/
 template<typename T>
 class PublicEncryptionKey {
 	public:
@@ -94,6 +102,9 @@ class PublicEncryptionKey {
 
 		PublicEncryptionKey(const PublicEncryptionKey& other) : PublicEncryptionKey(other.pub_e, other.pub_n) {};
 
+        /**
+        * Encrypt a byte with this public key
+        */
 		T encrypt(byte unencrypted) const {
 			return mod_exponent<T>(unencrypted, pub_e, pub_n);
 		}
@@ -103,6 +114,9 @@ class PublicEncryptionKey {
 		}
 };
 
+/**
+* A private encryption key
+*/
 template<typename T>
 class PrivateEncryptionKey {
 	public:
@@ -113,6 +127,9 @@ class PrivateEncryptionKey {
 			pub_key(PublicEncryptionKey<T>(smallest_coprime(totient), in_p * in_q)),
 			priv_d(mod_inverse(pub_key.pub_e, totient)) {}
 
+        /**
+        * Unencrypt an encrypted bit sequence with this private key
+        */
 		T decrypt(T encrypted) const {
 			return mod_exponent<T>(encrypted, priv_d, pub_key.pub_n);
 		}
@@ -120,6 +137,9 @@ class PrivateEncryptionKey {
 	private:
 		const T priv_p, priv_q, totient;
 
+        /**
+        * Return the smallest number coprime with a given number
+        */
 		static T smallest_coprime(T num) {
 			T guess = 2;
 			while (__gcd(guess, num) > 1) {
@@ -135,6 +155,52 @@ class PrivateEncryptionKey {
 		const T priv_d;
 };
 
+class RawSocket {
+public:
+    RawSocket(sock_t i_sock_id): sock_id(i_sock_id) {
+        if (i_sock_id < 0) {
+            cerr << "Failed to create socket" << endl;
+            exit(1);
+        }
+    };
+
+    int receive_any(byte* buffer, const int buffer_length) {
+        int length = recvfrom(sock_id , buffer , buffer_length , 0 , NULL, NULL);
+        if (length < 0) {
+            cerr << "Failed to receive from socket" << endl;
+            exit(1);
+        }
+        return length;
+    }
+
+    bool send_to(const ipaddr_t ip, byte* buffer, const int length) {
+        struct sockaddr_in sin;
+        sin.sin_family = AF_INET;
+        sin.sin_port = htons (0);
+        sin.sin_addr.s_addr = ip;
+
+        return sendto(sock_id, buffer, length, 0, (struct sockaddr *) &sin, sizeof (sin)) < 0;
+    }
+protected:
+    const sock_t sock_id;
+};
+
+class RawDataLinkSocket : public RawSocket {
+public:
+    RawDataLinkSocket() : RawSocket(socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP))) {};
+};
+
+class RawIPSocket : public RawSocket {
+public:
+    RawIPSocket() : RawSocket(socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) {
+        const int on = 1;
+        setsockopt (sock_id, IPPROTO_IP, IP_HDRINCL, &on, sizeof (on));
+    }
+};
+
+/**
+* Represents a packet payload
+*/
 class PacketPayload {
 	public:
 		PacketPayload(const struct iphdr* ip_packet, const uint16_t length) :
@@ -149,6 +215,9 @@ class PacketPayload {
 
 		typedef uint32_t encryption_type;
 
+        /**
+        * Encrypt this payload with a given public key
+        */
 		PacketPayload encrypt(const PublicEncryptionKey<encryption_type>& key) const {
 			struct iphdr new_header;
 			new_header.ihl = 5; //TODO: abstract this out
@@ -206,12 +275,10 @@ class PacketPayload {
 			return decrypted;
 		}
 
-		bool send(sock_t sock) const {
-			struct sockaddr_in sin;
-			sin.sin_family = AF_INET;
-			sin.sin_port = htons (0);
-			sin.sin_addr.s_addr = header.daddr;
-
+        /**
+        * Send this packet on a given socket
+        */
+		bool send(RawIPSocket& sock) const {
 			byte buffer[buffer_length];
 
 			const unsigned int header_length = rowsToBytes(header.ihl);
@@ -219,9 +286,7 @@ class PacketPayload {
 			memcpy(buffer, &header, header_length);
 			memcpy(buffer + header_length, payload, payload_length);
 
-			bool result = sendto(sock, buffer, ntohs(header.tot_len), 0, (struct sockaddr *) &sin, sizeof (sin)) < 0;
-
-			return result;
+            return sock.send_to(header.daddr, buffer, ntohs(header.tot_len));
 		}
 
 		operator string() const {
@@ -322,28 +387,13 @@ int main(int argc, char* argv[]) {
 	// Allocate string buffer to hold incoming packet data
 	//unsigned char *buffer = (unsigned char *)malloc(buffer_length);
 	// Open the raw socket
-	sock_t sock = socket (AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
-	if(sock < 0) {
-		//socket creation failed, may be because of non-root privileges
-		perror("Failed to create listening socket");
-		exit(1);
-	}
+	RawDataLinkSocket in_sock = RawDataLinkSocket();
+    RawIPSocket out_sock = RawIPSocket();
 
-	sock_t send_sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
-	if (send_sock < 0) {
-		perror("Failed to create packet sending socket");
-		exit(1);
-	}
-	const int on = 1;
-	setsockopt (send_sock, IPPROTO_IP, IP_HDRINCL, &on, sizeof (on));
 
 	while (true) {
 		// recvfrom is used to read data from a socket
-		packet_size = recvfrom(sock , buffer , buffer_length , 0 , NULL, NULL);
-		if (packet_size == -1) {
-			printf("Failed to get packets\n");
-			return 1;
-		}
+		packet_size = in_sock.receive_any(buffer, buffer_length);
 
 		if (packet_size >= sizeof(struct ethhdr) + sizeof(struct iphdr)) {
 			struct ethhdr* eth_header = (struct ethhdr*)buffer;
@@ -361,14 +411,14 @@ int main(int argc, char* argv[]) {
 							PublicEncryptionKey<PacketPayload::encryption_type> pub_key = pub_keys[ip_packet->daddr];
 							if (pub_key.pub_n > 0) {
 								PacketPayload encrypted = payload.encrypt(pub_key);
-								encrypted.send(send_sock);
+								encrypted.send(out_sock);
 							}
 						}
 						break;
 					case encrypted_source_last_eth_byte:
 						{
 							PacketPayload decrypted = payload.decrypt(priv_key);
-							decrypted.send(send_sock);
+							decrypted.send(out_sock);
 						}
 						break;
 					default:
