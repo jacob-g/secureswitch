@@ -15,6 +15,7 @@ class OversizedPacketException : std::exception {
 
 const int row_size = 4;
 extern const unsigned long int buffer_length = 65536;
+const uint8_t default_ihl = 5;
 
 /**
 * Convert rows in an IP packet to bytes
@@ -38,65 +39,6 @@ class PacketPayload {
 			delete[] payload;
 		}
 
-		typedef uint32_t encryption_type;
-
-        /**
-        * Encrypt this payload with a given public key
-        */
-		PacketPayload encrypt(const PublicEncryptionKey<encryption_type>& key) const {
-			struct iphdr new_header;
-			new_header.ihl = 5; //TODO: abstract this out
-			new_header.tot_len = htons(rowsToBytes(new_header.ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier);
-			new_header.saddr = rand();
-			new_header.daddr = header.daddr;
-			new_header.version = 4;
-			new_header.protocol = 0;
-
-			if (ntohs(new_header.tot_len) > buffer_length) {
-				throw OversizedPacketException();
-			}
-
-			byte buffer[buffer_length];
-			memcpy(buffer, &new_header, rowsToBytes(new_header.ihl)); //copy the new header to the beginning of the packet
-
-			encryption_type* dst_cursor = (encryption_type*)(buffer + rowsToBytes(new_header.ihl));
-
-			//TODO: join these foreach loops
-			//copy and encrypt the header (the encrypted version may use different unit sizes for each source bytes, but since dst_cursor is of type encryption_type, that is already taken care of)
-			for (byte* src = (byte*)&header; src < (byte*)&header + rowsToBytes(header.ihl); src++) {
-				*dst_cursor = key.encrypt(*src);
-				dst_cursor++;
-			}
-
-			//also copy and encrypt the payload
-			for (byte* src = const_cast<byte*>(payload); src < payload + payload_length; src++) {
-				*dst_cursor = key.encrypt(*src);
-				dst_cursor++;
-			}
-
-			PacketPayload encrypted((struct iphdr*)buffer, ntohs(new_header.tot_len));
-
-			return encrypted;
-		}
-
-		PacketPayload decrypt(const PrivateEncryptionKey<encryption_type> key) const {
-			byte buffer[buffer_length];
-
-			//copy the encrypted packet to the buffer that will represent the unencrypted packet
-			//the source is of the encryption type, which may be a different length than a single byte, but the pointer operations take care of that
-			byte* dst = buffer;
-			for (encryption_type* src = (encryption_type*)payload; (byte*)src < payload + payload_length; src++) {
-				*dst = key.decrypt(*src);
-				dst++;
-			}
-
-			struct iphdr old_header = *((struct iphdr *) buffer);
-
-			PacketPayload decrypted((struct iphdr*)buffer, ntohs(old_header.tot_len));
-
-			return decrypted;
-		}
-
         /**
         * Send this packet on a given socket
         */
@@ -117,8 +59,7 @@ class PacketPayload {
 			return ss.str();
 		}
 
-	private:
-		const static unsigned int size_multiplier = sizeof(encryption_type);
+	protected:
 		const struct iphdr header;
 		const unsigned int payload_length;
 		const byte* payload;
@@ -137,6 +78,76 @@ class PacketPayload {
 
 			return std::string((char*)inet_ntoa(ip_addr));
 		}
+};
+
+class EncryptablePacketPayload : public PacketPayload {
+public:
+    EncryptablePacketPayload(const struct iphdr* ip_packet, const uint16_t length) : PacketPayload(ip_packet, length) {};
+
+    typedef uint32_t encryption_type;
+
+    /**
+    * Encrypt this payload with a given public key
+    */
+    EncryptablePacketPayload encrypt(const PublicEncryptionKey<encryption_type>& key) const {
+        //create a new IP header with a bunch of random junk, with only the length (IHL/tot_len) and destination fields being correct
+        const uint64_t tot_len = rowsToBytes(default_ihl) + (rowsToBytes(header.ihl) + payload_length) * size_multiplier;
+
+        struct iphdr new_header;
+        new_header.ihl = default_ihl;
+        new_header.tot_len = htons((uint16_t)tot_len);
+        new_header.saddr = rand();
+        new_header.daddr = header.daddr;
+        new_header.version = 4;
+        new_header.protocol = 0;
+
+        //ensure that the packet isn't too big
+        if (tot_len > buffer_length) {
+            throw OversizedPacketException();
+        }
+
+        byte buffer[buffer_length];
+        memcpy(buffer, &new_header, rowsToBytes(new_header.ihl)); //copy the new header to the beginning of the packet
+
+        encryption_type* dst_cursor = (encryption_type*)(buffer + rowsToBytes(new_header.ihl));
+
+        //TODO: join these foreach loops
+        //copy and encrypt the header (the encrypted version may use different unit sizes for each source bytes, but since dst_cursor is of type encryption_type, that is already taken care of)
+        for (byte* src = (byte*)&header; src < (byte*)&header + rowsToBytes(header.ihl); src++) {
+            *dst_cursor = key.encrypt(*src);
+            dst_cursor++;
+        }
+
+        //also copy and encrypt the payload
+        for (byte* src = const_cast<byte*>(payload); src < payload + payload_length; src++) {
+            *dst_cursor = key.encrypt(*src);
+            dst_cursor++;
+        }
+
+        EncryptablePacketPayload encrypted((struct iphdr*)buffer, ntohs(new_header.tot_len));
+
+        return encrypted;
+    }
+
+    PacketPayload decrypt(const PrivateEncryptionKey<encryption_type> key) const {
+        byte buffer[buffer_length];
+
+        //copy the encrypted packet to the buffer that will represent the unencrypted packet
+        //the source is of the encryption type, which may be a different length than a single byte, but the pointer operations take care of that
+        byte* dst = buffer;
+        for (encryption_type* src = (encryption_type*)payload; (byte*)src < payload + payload_length; src++) {
+            *dst = key.decrypt(*src);
+            dst++;
+        }
+
+        struct iphdr old_header = *((struct iphdr *) buffer);
+
+        PacketPayload decrypted((struct iphdr*)buffer, ntohs(old_header.tot_len));
+
+        return decrypted;
+    }
+private:
+    const static unsigned int size_multiplier = sizeof(encryption_type);
 };
 
 #define PACKETS_INC

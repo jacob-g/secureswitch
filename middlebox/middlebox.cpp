@@ -78,13 +78,13 @@ map<ipaddr_t, PublicEncryptionKey<T> > pubKeysFromFile(const string fileName) {
 }
 
 int main(int argc, char* argv[]) {
-	tuple<PrivateEncryptionKey<PacketPayload::encryption_type>, string> cmd_args = cmdLineArgs<PacketPayload::encryption_type>(argc, argv);
+	tuple<PrivateEncryptionKey<EncryptablePacketPayload::encryption_type>, string> cmd_args = cmdLineArgs<EncryptablePacketPayload::encryption_type>(argc, argv);
 
-	map<ipaddr_t, PublicEncryptionKey<PacketPayload::encryption_type> > pub_keys = pubKeysFromFile<PacketPayload::encryption_type>(get<1>(cmd_args));
+	map<ipaddr_t, PublicEncryptionKey<EncryptablePacketPayload::encryption_type> > pub_keys = pubKeysFromFile<EncryptablePacketPayload::encryption_type>(get<1>(cmd_args));
 
 	cout << "Starting middlebox..." << endl;
 
-	PrivateEncryptionKey<PacketPayload::encryption_type> priv_key = get<0>(cmd_args);
+	PrivateEncryptionKey<EncryptablePacketPayload::encryption_type> priv_key = get<0>(cmd_args);
 
 	byte buffer[buffer_length];
 
@@ -108,15 +108,15 @@ int main(int argc, char* argv[]) {
 			struct iphdr *ip_packet = (struct iphdr *)(buffer + sizeof(struct ethhdr));
 
 			try {
-				PacketPayload payload(ip_packet, packet_size - - sizeof(struct ethhdr) - rowsToBytes(ip_packet->ihl));
+				EncryptablePacketPayload payload(ip_packet, packet_size - - sizeof(struct ethhdr) - rowsToBytes(ip_packet->ihl));
 
 				switch (last_eth_src_byte) {
 					case unencrypted_source_last_eth_byte:
 						{
 							//encrypt he packet if we have a registered public key for the destination (and if not, drop it)
-							PublicEncryptionKey<PacketPayload::encryption_type> pub_key = pub_keys[ip_packet->daddr];
+							PublicEncryptionKey<EncryptablePacketPayload::encryption_type> pub_key = pub_keys[ip_packet->daddr];
 							if (pub_key.pub_n > 0) {
-								PacketPayload encrypted = payload.encrypt(pub_key);
+								EncryptablePacketPayload encrypted = payload.encrypt(pub_key);
 								encrypted.send(out_sock);
 							}
 						}
