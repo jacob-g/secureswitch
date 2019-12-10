@@ -3,3 +3,5 @@ ctest/test
 middlebox/middlebox
 pcap/pcap
 packetsender/*
+stresstest/send
+stresstest/receive

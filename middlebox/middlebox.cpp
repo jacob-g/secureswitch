@@ -26,7 +26,7 @@ const unsigned long int buffer_length = 65536;
 template<typename T>
 T mod_inverse(T a, T m)
 {
-    T top_left = m;
+	T top_left = m;
 	long long int top_right = 0;
 
 	T bottom_left = a;
@@ -44,7 +44,7 @@ T mod_inverse(T a, T m)
 		top_right = old_bottom_right;
 	}
 
-    return top_right < 0 ? top_right + m : top_right;
+	return top_right < 0 ? top_right + m : top_right;
 }
 
 
@@ -67,12 +67,12 @@ class OversizedPacketException : exception {
 */
 template<typename T>
 T mod_exponent(T num, T exponent, T mod) {
-    T working_exponent = exponent;
+	T working_exponent = exponent;
 	T working_power = num;
 	T result = 1;
 	while (working_exponent > 0) {
 		if (working_exponent % 2 == 1) {
-            result = (result * working_power) % mod;
+			result = (result * working_power) % mod;
 		}
 
 		working_power = (working_power * working_power) % mod;
@@ -90,16 +90,16 @@ class PublicEncryptionKey {
 			pub_e(in_e),
 			pub_n(in_n) {};
 
-        PublicEncryptionKey() : PublicEncryptionKey(0, 0) {};
+		PublicEncryptionKey() : PublicEncryptionKey(0, 0) {};
 
-        PublicEncryptionKey(const PublicEncryptionKey& other) : PublicEncryptionKey(other.pub_e, other.pub_n) {};
+		PublicEncryptionKey(const PublicEncryptionKey& other) : PublicEncryptionKey(other.pub_e, other.pub_n) {};
 
 		T encrypt(byte unencrypted) const {
 			return mod_exponent<T>(unencrypted, pub_e, pub_n);
 		}
 
 		PublicEncryptionKey operator=(const PublicEncryptionKey& other) {
-            return PublicEncryptionKey(other.pub_e, other.pub_n);
+			return PublicEncryptionKey(other.pub_e, other.pub_n);
 		}
 };
 
@@ -201,27 +201,27 @@ class PacketPayload {
 
 			struct iphdr old_header = *((struct iphdr *) buffer);
 
-            PacketPayload decrypted((struct iphdr*)buffer, ntohs(old_header.tot_len));
+			PacketPayload decrypted((struct iphdr*)buffer, ntohs(old_header.tot_len));
 
 			return decrypted;
 		}
 
 		bool send(sock_t sock) const {
-            struct sockaddr_in sin;
-            sin.sin_family = AF_INET;
-            sin.sin_port = htons (0);
-            sin.sin_addr.s_addr = header.daddr;
+			struct sockaddr_in sin;
+			sin.sin_family = AF_INET;
+			sin.sin_port = htons (0);
+			sin.sin_addr.s_addr = header.daddr;
 
-            byte buffer[buffer_length];
+			byte buffer[buffer_length];
 
-            const unsigned int header_length = rowsToBytes(header.ihl);
+			const unsigned int header_length = rowsToBytes(header.ihl);
 
-            memcpy(buffer, &header, header_length);
-            memcpy(buffer + header_length, payload, payload_length);
+			memcpy(buffer, &header, header_length);
+			memcpy(buffer + header_length, payload, payload_length);
 
-            bool result = sendto(sock, buffer, ntohs(header.tot_len), 0, (struct sockaddr *) &sin, sizeof (sin)) < 0;
+			bool result = sendto(sock, buffer, ntohs(header.tot_len), 0, (struct sockaddr *) &sin, sizeof (sin)) < 0;
 
-            return result;
+			return result;
 		}
 
 		operator string() const {
@@ -230,7 +230,7 @@ class PacketPayload {
 			return ss.str();
 		}
 
-    private:
+	private:
 		const static unsigned int size_multiplier = sizeof(encryption_type);
 		const struct iphdr header;
 		const unsigned int payload_length;
@@ -256,34 +256,34 @@ const string arg_str = "a:b:f:";
 
 template<typename T>
 tuple<PrivateEncryptionKey<T>, string> cmdLineArgs(int argc, char** argv) {
-    T prime_a = 0, prime_b = 0;
-    string filename;
-    int c;
-    while ((c = getopt(argc, argv, arg_str.c_str())) != -1) {
+	T prime_a = 0, prime_b = 0;
+	string filename;
+	int c;
+	while ((c = getopt(argc, argv, arg_str.c_str())) != -1) {
 		switch (c) {
 			case 'a':
 				prime_a = atoi(optarg);
 				break;
-            case 'b':
-                prime_b = atoi(optarg);
-                break;
-            case 'f':
-                filename = optarg;
-                break;
-            default:
-                cerr << "Unknown command line argument: " << (char)c << endl;
-                break;
+			case 'b':
+				prime_b = atoi(optarg);
+				break;
+			case 'f':
+				filename = optarg;
+				break;
+			default:
+				cerr << "Unknown command line argument: " << (char)c << endl;
+				break;
 		}
 	}
 
 	if (prime_a == 0 || prime_b == 0) {
-        cerr << "Missing private key, specify with -a and -b" << endl;
-        exit(1);
+		cerr << "Missing private key, specify with -a and -b" << endl;
+		exit(1);
 	}
 
 	if (filename.size() == 0) {
-        cerr << "Missing public key filename, specify with -f" << endl;
-        exit(1);
+		cerr << "Missing public key filename, specify with -f" << endl;
+		exit(1);
 	}
 
 	return make_tuple(PrivateEncryptionKey<T>(prime_a, prime_b), filename);
@@ -291,43 +291,43 @@ tuple<PrivateEncryptionKey<T>, string> cmdLineArgs(int argc, char** argv) {
 
 template<typename T>
 map<ipaddr_t, PublicEncryptionKey<T> > pubKeysFromFile(const string fileName) {
-    map<ipaddr_t, PublicEncryptionKey<T> > result;
+	map<ipaddr_t, PublicEncryptionKey<T> > result;
 
-    ifstream file(fileName);
-    string ip_str;
-    T e, n;
-    while (file >> ip_str, file >> e, file >> n) {
-        PublicEncryptionKey<T> key(e, n);
-        ipaddr_t ip = inet_addr(ip_str.c_str());
-        result.insert(typename map<ipaddr_t, PublicEncryptionKey<T> >::value_type(ip, key));
-    }
-    file.close();
+	ifstream file(fileName);
+	string ip_str;
+	T e, n;
+	while (file >> ip_str, file >> e, file >> n) {
+		PublicEncryptionKey<T> key(e, n);
+		ipaddr_t ip = inet_addr(ip_str.c_str());
+		result.insert(typename map<ipaddr_t, PublicEncryptionKey<T> >::value_type(ip, key));
+	}
+	file.close();
 
-    return result;
+	return result;
 }
 
 int main(int argc, char* argv[]) {
-    tuple<PrivateEncryptionKey<PacketPayload::encryption_type>, string> cmd_args = cmdLineArgs<PacketPayload::encryption_type>(argc, argv);
+	tuple<PrivateEncryptionKey<PacketPayload::encryption_type>, string> cmd_args = cmdLineArgs<PacketPayload::encryption_type>(argc, argv);
 
-    map<ipaddr_t, PublicEncryptionKey<PacketPayload::encryption_type> > pub_keys = pubKeysFromFile<PacketPayload::encryption_type>(get<1>(cmd_args));
+	map<ipaddr_t, PublicEncryptionKey<PacketPayload::encryption_type> > pub_keys = pubKeysFromFile<PacketPayload::encryption_type>(get<1>(cmd_args));
 
 	cout << "Starting middlebox..." << endl;
 
 	PrivateEncryptionKey<PacketPayload::encryption_type> priv_key = get<0>(cmd_args);
 
-    byte buffer[buffer_length];
+	byte buffer[buffer_length];
 
-    int packet_size;
+	int packet_size;
 
-    // Allocate string buffer to hold incoming packet data
-    //unsigned char *buffer = (unsigned char *)malloc(buffer_length);
-    // Open the raw socket
-    sock_t sock = socket (AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
-    if(sock < 0) {
-        //socket creation failed, may be because of non-root privileges
-        perror("Failed to create listening socket");
-        exit(1);
-    }
+	// Allocate string buffer to hold incoming packet data
+	//unsigned char *buffer = (unsigned char *)malloc(buffer_length);
+	// Open the raw socket
+	sock_t sock = socket (AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
+	if(sock < 0) {
+		//socket creation failed, may be because of non-root privileges
+		perror("Failed to create listening socket");
+		exit(1);
+	}
 
 	sock_t send_sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
 	if (send_sock < 0) {
@@ -337,7 +337,7 @@ int main(int argc, char* argv[]) {
 	const int on = 1;
 	setsockopt (send_sock, IPPROTO_IP, IP_HDRINCL, &on, sizeof (on));
 
-    while (true) {
+	while (true) {
 		// recvfrom is used to read data from a socket
 		packet_size = recvfrom(sock , buffer , buffer_length , 0 , NULL, NULL);
 		if (packet_size == -1) {
@@ -346,34 +346,34 @@ int main(int argc, char* argv[]) {
 		}
 
 		if (packet_size >= sizeof(struct ethhdr) + sizeof(struct iphdr)) {
-            struct ethhdr* eth_header = (struct ethhdr*)buffer;
-            const byte last_eth_src_byte = eth_header->h_source[5];
+			struct ethhdr* eth_header = (struct ethhdr*)buffer;
+			const byte last_eth_src_byte = eth_header->h_source[5];
 
-            struct iphdr *ip_packet = (struct iphdr *)(buffer + sizeof(struct ethhdr));
+			struct iphdr *ip_packet = (struct iphdr *)(buffer + sizeof(struct ethhdr));
 
 			try {
-                PacketPayload payload(ip_packet, packet_size - - sizeof(struct ethhdr) - rowsToBytes(ip_packet->ihl));
+				PacketPayload payload(ip_packet, packet_size - - sizeof(struct ethhdr) - rowsToBytes(ip_packet->ihl));
 
-                switch (last_eth_src_byte) {
-                    case unencrypted_source_last_eth_byte:
-                        {
-                            //encrypt he packet if we have a registered public key for the destination (and if not, drop it)
-                            PublicEncryptionKey<PacketPayload::encryption_type> pub_key = pub_keys[ip_packet->daddr];
-                            if (pub_key.pub_n > 0) {
-                                PacketPayload encrypted = payload.encrypt(pub_key);
-                                encrypted.send(send_sock);
-                            }
-                        }
-                        break;
-                    case encrypted_source_last_eth_byte:
-                        {
-                            PacketPayload decrypted = payload.decrypt(priv_key);
-                            decrypted.send(send_sock);
-                        }
-                        break;
-                    default:
-                        break;
-                }
+				switch (last_eth_src_byte) {
+					case unencrypted_source_last_eth_byte:
+						{
+							//encrypt he packet if we have a registered public key for the destination (and if not, drop it)
+							PublicEncryptionKey<PacketPayload::encryption_type> pub_key = pub_keys[ip_packet->daddr];
+							if (pub_key.pub_n > 0) {
+								PacketPayload encrypted = payload.encrypt(pub_key);
+								encrypted.send(send_sock);
+							}
+						}
+						break;
+					case encrypted_source_last_eth_byte:
+						{
+							PacketPayload decrypted = payload.decrypt(priv_key);
+							decrypted.send(send_sock);
+						}
+						break;
+					default:
+						break;
+				}
 
 
 			} catch (OversizedPacketException) {
@@ -381,9 +381,9 @@ int main(int argc, char* argv[]) {
 				cerr << "Packet dropped due to being too large" << endl;
 			}
 		}
-    }
+	}
 
 	cout << "Closing middlebox..." << endl;
 
-    return 0;
+	return 0;
 }
