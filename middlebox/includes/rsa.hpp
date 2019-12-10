@@ -27,7 +27,7 @@ T mod_exponent(T num, T exponent, T mod) {
 */
 template<typename T>
 T mod_inverse(T a, T m) {
-    //perform the Euclidean algorithm
+	//perform the Euclidean algorithm
 	T top_left = m;
 	long long int top_right = 0;
 
@@ -56,7 +56,7 @@ template<typename T>
 class PublicEncryptionKey {
 	public:
 		const T pub_e, //the exponent
-                pub_n; //the modulus
+				pub_n; //the modulus
 
 		PublicEncryptionKey(T in_e, T in_n) :
 			pub_e(in_e),
@@ -66,9 +66,9 @@ class PublicEncryptionKey {
 
 		PublicEncryptionKey(const PublicEncryptionKey& other) : PublicEncryptionKey(other.pub_e, other.pub_n) {};
 
-        /**
-        * Encrypt a byte with this public key
-        */
+		/**
+		* Encrypt a byte with this public key
+		*/
 		T encrypt(byte unencrypted) const {
 			return mod_exponent<T>(unencrypted, pub_e, pub_n);
 		}
@@ -78,7 +78,7 @@ class PublicEncryptionKey {
 		}
 
 		inline operator bool() const {
-            return pub_n > 0;
+			return pub_n > 0;
 		}
 };
 
@@ -95,20 +95,20 @@ class PrivateEncryptionKey {
 			pub_key(PublicEncryptionKey<T>(smallest_coprime(totient), in_p * in_q)),
 			priv_d(mod_inverse(pub_key.pub_e, totient)) {}
 
-        /**
-        * Unencrypt an encrypted bit sequence with this private key
-        */
+		/**
+		* Unencrypt an encrypted bit sequence with this private key
+		*/
 		T decrypt(T encrypted) const {
 			return mod_exponent<T>(encrypted, priv_d, pub_key.pub_n);
 		}
 
 	private:
 		const T priv_p, priv_q, //the two primes used to generate the key
-                totient; //the totient of the product of the two primes
+				totient; //the totient of the product of the two primes
 
-        /**
-        * Return the smallest number coprime with a given number
-        */
+		/**
+		* Return the smallest number coprime with a given number
+		*/
 		static T smallest_coprime(T num) {
 			T guess = 2;
 			while (std::__gcd(guess, num) > 1) {
