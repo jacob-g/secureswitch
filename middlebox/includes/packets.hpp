@@ -88,7 +88,7 @@ public:
 	EncryptablePacketPayload(const struct iphdr* ip_packet, const uint16_t length) : PacketPayload(ip_packet, length) {};
 
 	typedef byte decryption_type;
-	typedef uint32_t encryption_type;
+	typedef uint16_t encryption_type;
 
 	/**
 	* Encrypt this payload with a given public key
@@ -144,8 +144,6 @@ public:
 		}
 
 		struct iphdr old_header = *((struct iphdr *) buffer);
-
-		std::cout << "Send length: " << old_header.tot_len << std::endl;
 
 		return PacketPayload((struct iphdr*)buffer, ntohs(old_header.tot_len));
 	}

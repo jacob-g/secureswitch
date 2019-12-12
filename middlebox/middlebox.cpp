@@ -145,11 +145,8 @@ int main(int argc, char* argv[]) {
 					case ENCRYPTED:
 						{
 						    //decrypt an encrypted packet
-						    cout << "Encrypted..." << endl;
 							PacketPayload decrypted = payload.decrypt(priv_key);
-							if (!decrypted.send(out_sock)) {
-								cout << strerror(errno) << endl;
-							}
+							decrypted.send(out_sock);
 						}
 						break;
 					default:
